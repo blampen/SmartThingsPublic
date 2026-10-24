@@ -39,6 +39,14 @@ sub BuildList()
         { id: "refresh", text: "Thumbnail refresh:  every " + AsInt(s.refreshSec).ToStr() + " s", help: "How often the camera grid fetches a new picture from each camera." }
         { id: "clear", text: "Remove all cameras", help: "Forgets every camera. Search again from the home screen to find them." }
     ]
+    if LoadPresets() <> invalid then
+        ' Cameras and their logins come from presets.json in the package.
+        fixedItems = []
+        for each item in m.items
+            if item.id <> "login" and item.id <> "clear" then fixedItems.Push(item)
+        end for
+        m.items = fixedItems
+    end if
     content = CreateObject("roSGNode", "ContentNode")
     for each item in m.items
         node = content.CreateChild("ContentNode")

@@ -1,0 +1,14 @@
+{
+  "user": "admin",
+  "pass": "your-camera-password",
+  "cameras": [
+    { "name": "Front Door", "address": "192.168.1.20" },
+    { "name": "Driveway", "address": "192.168.1.21" },
+    { "name": "Back Yard", "address": "192.168.1.22:8000" },
+    { "name": "Garage", "address": "192.168.1.23", "user": "viewer", "pass": "other-password" }
+  ],
+  "settings": {
+    "refreshSec": 1,
+    "bridgeHost": ""
+  }
+}

@@ -83,7 +83,6 @@ sub ShowCamera()
         SetSnapshotJob("", 0)
         m.detail.text = cam.xaddr
         reason = StrOrEmpty(cam.error)
-        if cam.status = "login" then reason = "This camera needs its login. Press Back, then OK on the camera to enter it."
         if reason = "" then reason = "Still connecting to this camera..."
         ShowMessage(reason)
         return

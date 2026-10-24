@@ -166,14 +166,14 @@ end function
 
 ' Calls operation op of service ns at url.
 ' Returns { ok, code, xml, response, fault, authFailed, error }.
-function OnvifCall(url as String, ns as String, op as String, inner as String, ctx as Dynamic) as Object
+function OnvifCall(url as String, ns as String, op as String, inner as String, ctx as Dynamic, timeoutMs = 8000 as Integer) as Object
     body = "<" + op + " xmlns=""" + ns + """>" + inner + "</" + op + ">"
     opts = {
         url: url
         method: "POST"
         body: OnvifEnvelope(body, ctx)
         headers: { "Content-Type": "application/soap+xml; charset=utf-8; action=""" + ns + "/" + op + """" }
-        timeoutMs: 8000
+        timeoutMs: timeoutMs
     }
     if ctx <> invalid then
         ' Some firmware protects the SOAP endpoint with HTTP Digest instead
@@ -224,8 +224,8 @@ end function
 
 ' Camera clock minus ours in seconds, or invalid if it could not be read.
 ' This call is unauthenticated by spec, so it works before we know the login.
-function OnvifGetClockOffset(deviceUrl as String) as Object
-    res = OnvifCall(deviceUrl, OnvifNs().device, "GetSystemDateAndTime", "", invalid)
+function OnvifGetClockOffset(deviceUrl as String, timeoutMs = 8000 as Integer) as Object
+    res = OnvifCall(deviceUrl, OnvifNs().device, "GetSystemDateAndTime", "", invalid, timeoutMs)
     ' Any SOAP reply (even a fault) or an auth challenge means an ONVIF
     ' service is listening there.
     out = { reachable: res.xml <> invalid or res.code = 401, code: res.code, error: HttpErrorText(res), offset: invalid }
@@ -367,16 +367,43 @@ end function
 
 ' ---------------------------------------------------------------- probe
 
+' Ports cameras commonly serve ONVIF on: most brands, Reolink, Tapo,
+' Xiongmai-based cameras and DVRs, and a few others.
+function OnvifCommonPorts() as Object
+    return [80, 8000, 2020, 8899, 8080, 5000]
+end function
+
+' Returns the device service URL on the first of ports that answers ONVIF
+' on host, or "" if none does. skipUrl has already been tried.
+function OnvifFindDeviceUrl(host as String, ports as Object, skipUrl as String) as String
+    for each port in ports
+        url = "http://" + host
+        if port <> 80 then url = url + ":" + port.ToStr()
+        url = url + "/onvif/device_service"
+        if url <> skipUrl and OnvifGetClockOffset(url, 3000).reachable then return url
+    end for
+    return ""
+end function
+
 ' Talks to one camera and fills in everything the app needs to show it.
-' cam: { id, name, xaddr, host, user, pass }  (user/pass already resolved)
-' Returns { ok, authFailed, error, info: { manufacturer, model, timeOffset,
-'           mediaUrl, profiles } }.
+' cam: { id, name, xaddr, user, pass, autoPort }  (user/pass already resolved)
+' autoPort: the address was a bare IP, so look for ONVIF on the usual ports
+' if xaddr doesn't answer.
+' Returns { ok, authFailed, error, info: { deviceUrl, manufacturer, model,
+'           timeOffset, mediaUrl, profiles } }.
 function OnvifProbeCamera(cam as Object) as Object
     out = { ok: false, authFailed: false, error: "", info: invalid }
     deviceUrl = cam.xaddr
     host = UrlHost(deviceUrl)
 
     clock = OnvifGetClockOffset(deviceUrl)
+    if not clock.reachable and AsBool(cam.autoPort) then
+        found = OnvifFindDeviceUrl(host, OnvifCommonPorts(), deviceUrl)
+        if found <> "" then
+            deviceUrl = found
+            clock = OnvifGetClockOffset(deviceUrl)
+        end if
+    end if
     if not clock.reachable then
         if clock.code > 0 then
             out.error = "No ONVIF service at " + deviceUrl + " (" + clock.error + ")"
@@ -409,7 +436,7 @@ function OnvifProbeCamera(cam as Object) as Object
         if snap.ok then p.snapshotUri = UrlRehost(snap.uri, host)
     end for
 
-    info = { manufacturer: "", model: "", timeOffset: ctx.timeOffset, mediaUrl: mediaUrl, profiles: profiles.profiles }
+    info = { deviceUrl: deviceUrl, manufacturer: "", model: "", timeOffset: ctx.timeOffset, mediaUrl: mediaUrl, profiles: profiles.profiles }
     device = OnvifGetDeviceInformation(deviceUrl, ctx)
     if device.ok then
         info.manufacturer = device.info.manufacturer

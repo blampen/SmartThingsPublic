@@ -18,8 +18,11 @@ function DefaultSettings() as Object
     }
 end function
 
+' Defaults, then any settings from presets.json, then what the user saved.
 function LoadSettings() as Object
     settings = DefaultSettings()
+    presets = LoadPresets()
+    if presets <> invalid then settings.Append(presets.settings)
     saved = ParseJsonSafe(StoreSection().Read("settings"))
     if saved <> invalid and GetInterface(saved, "ifAssociativeArray") <> invalid then settings.Append(saved)
     return settings
@@ -62,6 +65,56 @@ sub SaveCameras(cameras as Object)
     section.Write("cameras", FormatJson(stored))
     section.Flush()
 end sub
+
+' Optional fixed camera list baked into the package as pkg:/presets.json
+' (see presets.example.json). It holds passwords, so it is kept out of git.
+' Returns invalid when there is no presets file with cameras in it.
+function LoadPresets() as Dynamic
+    return ParsePresets(ReadAsciiFile("pkg:/presets.json"))
+end function
+
+' { cameras: [camera records], settings: {} }
+function ParsePresets(text as String) as Dynamic
+    data = ParseJsonSafe(text)
+    if data = invalid or GetInterface(data, "ifAssociativeArray") = invalid then return invalid
+    list = data.cameras
+    if list = invalid or GetInterface(list, "ifArray") = invalid then return invalid
+
+    cameras = []
+    for each item in list
+        address = ""
+        if GetInterface(item, "ifAssociativeArray") <> invalid then address = StrOrEmpty(item.address).Trim()
+        if address <> "" then
+            user = StrOrEmpty(data.user)
+            pass = StrOrEmpty(data.pass)
+            if item.user <> invalid then user = StrOrEmpty(item.user)
+            if item.pass <> invalid then pass = StrOrEmpty(item.pass)
+            cam = NewCameraRecord({ id: "preset:" + address, name: StrOrEmpty(item.name), xaddr: DeviceServiceUrlFor(address), ownLogin: true, user: user, pass: pass })
+            ' A bare IP doesn't say which port ONVIF is on; let the probe look.
+            cam.autoPort = UrlParse(address) = invalid and address.InStr(":") < 0
+            cameras.Push(cam)
+        end if
+    end for
+    if cameras.Count() = 0 then return invalid
+
+    settings = {}
+    if data.settings <> invalid and GetInterface(data.settings, "ifAssociativeArray") <> invalid then settings = data.settings
+    return { cameras: cameras, settings: settings }
+end function
+
+' Preset cameras keep what the app learned about them (the ONVIF port it
+' found, the stream picked) across launches.
+function ApplySavedCameraState(presets as Object, saved as Object) as Object
+    for each cam in presets
+        for each old in saved
+            if old.id = cam.id then
+                cam.xaddr = old.xaddr
+                cam.profile = old.profile
+            end if
+        end for
+    end for
+    return presets
+end function
 
 sub ClearStore()
     section = StoreSection()
@@ -112,14 +165,22 @@ function CameraProfile(cam as Object) as Object
     return profiles[index]
 end function
 
-' Thumbnails come from the smallest profile that has a snapshot URI: same
-' picture, far less to download and decode.
-function CameraThumbnailUri(cam as Object) as String
+' Thumbnails come from the smallest profile at least minWidth wide (or the
+' largest there is): enough detail for the tile, far less to download and
+' decode than the main stream.
+function CameraThumbnailUri(cam as Object, minWidth = 0 as Integer) as String
     profiles = cam.profiles
     if profiles = invalid then return ""
-    for i = profiles.Count() - 1 to 0 step -1
-        if StrOrEmpty(profiles[i].snapshotUri) <> "" then return profiles[i].snapshotUri
+    best = invalid
+    largest = invalid
+    for each p in profiles
+        if StrOrEmpty(p.snapshotUri) <> "" then
+            if p.width >= minWidth and (best = invalid or p.width < best.width) then best = p
+            if largest = invalid or p.width > largest.width then largest = p
+        end if
     end for
+    if best <> invalid then return best.snapshotUri
+    if largest <> invalid then return largest.snapshotUri
     return ""
 end function
 

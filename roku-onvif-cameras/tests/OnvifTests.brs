@@ -11,6 +11,7 @@ sub Main(args as Dynamic)
     TestDigest()
     TestDiscoveryParsing()
     TestProfileSort()
+    TestPresets()
 
     camera = StrOrEmpty(args.camera)
     if camera <> "" then
@@ -131,6 +132,38 @@ sub TestProfileSort()
     Check("profile order", order.Join(","), "main,third,sub,jpeg")
 end sub
 
+sub TestPresets()
+    text = "{""user"":""admin"",""pass"":""p@ss!"",""settings"":{""refreshSec"":1},""cameras"":["
+    text = text + "{""name"":""One"",""address"":""192.168.0.20""},"
+    text = text + "{""address"":""192.168.0.21:8000"",""user"":""viewer"",""pass"":""x""},"
+    text = text + "{""address"":""http://192.168.0.22/onvif/device_service""},"
+    text = text + "{""name"":""no address""}]}"
+    presets = ParsePresets(text)
+    Check("presets parsed", presets <> invalid, true)
+    if presets = invalid then return
+    cams = presets.cameras
+    Check("presets skip entries without address", cams.Count(), 3)
+    Check("preset id", cams[0].id, "preset:192.168.0.20")
+    Check("preset name", CameraTitle(cams[0]), "One")
+    Check("preset xaddr", cams[0].xaddr, "http://192.168.0.20/onvif/device_service")
+    Check("preset shared login", CameraLogin(cams[0], DefaultSettings()).pass, "p@ss!")
+    Check("bare ip scans ports", cams[0].autoPort, true)
+    Check("explicit port kept", cams[1].autoPort, false)
+    Check("explicit url kept", cams[2].autoPort, false)
+    Check("per-camera login", CameraLogin(cams[1], DefaultSettings()).user, "viewer")
+    Check("preset settings", presets.settings.refreshSec, 1)
+
+    saved = [{ id: "preset:192.168.0.20", xaddr: "http://192.168.0.20:2020/onvif/device_service", profile: 1 }]
+    merged = ApplySavedCameraState(cams, saved)
+    Check("remembered port", merged[0].xaddr, "http://192.168.0.20:2020/onvif/device_service")
+    Check("remembered stream", merged[0].profile, 1)
+    Check("others untouched", merged[1].xaddr, "http://192.168.0.21:8000/onvif/device_service")
+
+    Check("no presets file", ParsePresets(""), invalid)
+    Check("presets without cameras", ParsePresets("{""cameras"":[]}"), invalid)
+    Check("presets garbage", ParsePresets("nope"), invalid)
+end sub
+
 ' ---------------------------------------------------------------- fake camera
 
 sub TestProbeAgainstFakeCamera(address as String, skew as Integer, rtspPort as String)
@@ -169,13 +202,20 @@ sub TestProbeAgainstFakeCamera(address as String, skew as Integer, rtspPort as S
         Check("stream uri rehosted + unescaped", main.streamUri, "rtsp://" + host + ":" + rtspPort + "/fakecam?profile=Profile_1&x=1")
         Check("snapshot uri", main.snapshotUri, "http://" + host + ":" + UrlParse(deviceUrl).port + "/snapshot.jpg?profile=Profile_1")
         cam = { profiles: info.profiles, profile: 7 }
-        Check("thumbnail uses smallest", CameraThumbnailUri(cam), info.profiles[2].snapshotUri)
+        Check("thumbnail uses smallest", CameraThumbnailUri(cam), info.profiles[1].snapshotUri)
+        Check("wall thumbnail big enough", CameraThumbnailUri(cam, 924), main.snapshotUri)
+        Check("thumbnail falls back to largest", CameraThumbnailUri(cam, 5000), info.profiles[2].snapshotUri)
         Check("profile index clamped", CameraProfile(cam).token, "Profile_1")
     end if
 
     bad = OnvifProbeCamera({ xaddr: deviceUrl, user: "admin", pass: "wrong" })
     Check("wrong password fails", bad.ok, false)
     Check("wrong password is auth failure", bad.authFailed, true)
+
+    port = UrlParse(deviceUrl).port
+    Check("port scan finds onvif", OnvifFindDeviceUrl(host, [9, port.ToInt()], ""), deviceUrl)
+    Check("port scan skips tried url", OnvifFindDeviceUrl(host, [port.ToInt()], deviceUrl), "")
+    Check("port scan none", OnvifFindDeviceUrl(host, [9], ""), "")
 
     gone = OnvifProbeCamera({ xaddr: "http://127.0.0.1:9/onvif/device_service", user: "admin", pass: "secret" })
     Check("unreachable camera fails", gone.ok, false)

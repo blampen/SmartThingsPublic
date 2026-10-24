@@ -1,12 +1,14 @@
 # Build and sideload the Roku channel.
 #
 #   make                                     build out/roku-onvif-cameras.zip
+#                                            (includes presets.json if present)
 #   make install ROKU_IP=192.168.1.20 ROKU_PASS=<developer password>
 #   make lint / make test                    need `npm install` first
 
 APP := roku-onvif-cameras
 ZIP := out/$(APP).zip
-SOURCES := manifest $(shell find source components images -type f)
+PRESETS := $(wildcard presets.json)
+SOURCES := manifest $(shell find source components images -type f) $(PRESETS)
 
 .PHONY: all install lint test clean
 
@@ -15,8 +17,8 @@ all: $(ZIP)
 $(ZIP): $(SOURCES)
 	@mkdir -p out
 	@rm -f $@
-	zip -qr $@ manifest source components images
-	@echo "Built $@"
+	zip -qr $@ manifest source components images $(PRESETS)
+	@echo "Built $@$(if $(PRESETS), with presets.json,)"
 
 install: $(ZIP)
 	@test -n "$(ROKU_IP)" || { echo "Usage: make install ROKU_IP=<roku ip> ROKU_PASS=<developer password>"; exit 1; }

@@ -13,7 +13,15 @@ sub init()
     m.toastTimer = m.top.FindNode("toastTimer")
 
     m.settings = LoadSettings()
-    m.cameras = LoadCameras()
+    ' presets.json in the package fixes the camera list (see README).
+    presets = LoadPresets()
+    m.fixed = presets <> invalid
+    if m.fixed then
+        m.cameras = ApplySavedCameraState(presets.cameras, LoadCameras())
+        m.grid.layout = "wall"
+    else
+        m.cameras = LoadCameras()
+    end if
     m.items = {}
     m.probeTasks = {}
     m.probeGen = 0
@@ -37,7 +45,10 @@ sub init()
     m.grid.SetFocus(true)
     m.top.SignalBeacon("AppLaunchComplete")
 
-    if m.cameras.Count() = 0 then
+    if m.fixed then
+        ProbeCameras(false)
+        ShowToast("OK  full screen          *  options and settings")
+    else if m.cameras.Count() = 0 then
         StartDiscovery()
     else
         ProbeCameras(false)
@@ -54,12 +65,15 @@ sub BuildGrid(focusIndex as Integer)
         item = content.CreateChild("CameraItem")
         item.kind = "camera"
         item.camId = cam.id
+        if m.fixed then item.layout = "wall"
         m.items[cam.id] = item
         UpdateItem(cam)
     end for
-    AddAction(content, "scan", "Search for cameras", "pkg:/images/tile_scan.png")
-    AddAction(content, "add", "Add camera by address", "pkg:/images/tile_add.png")
-    AddAction(content, "settings", "Settings", "pkg:/images/tile_settings.png")
+    if not m.fixed then
+        AddAction(content, "scan", "Search for cameras", "pkg:/images/tile_scan.png")
+        AddAction(content, "add", "Add camera by address", "pkg:/images/tile_add.png")
+        AddAction(content, "settings", "Settings", "pkg:/images/tile_settings.png")
+    end if
     m.grid.content = content
     if focusIndex > 0 and focusIndex < content.GetChildCount() then m.grid.jumpToItem = focusIndex
     UpdateGridStatus()
@@ -82,14 +96,16 @@ sub UpdateItem(cam as Object)
         profile = CameraProfile(cam)
         item.statusText = "Online"
         if profile <> invalid and profile.width > 0 then item.statusText = profile.width.ToStr() + "x" + profile.height.ToStr()
-        if CameraThumbnailUri(cam) = "" then
+        if CameraThumbnailUri(cam, ThumbnailWidth()) = "" then
             item.snapshotError = "No snapshots from this camera - press OK for live video"
         else if item.snapshotError.InStr("No snapshots") = 0 then
             item.snapshotError = ""
         end if
     else if cam.status = "login" then
         item.statusText = "Login needed"
+        ' Fixed cameras can't be given a new login from the TV.
         item.snapshotError = ""
+        if m.fixed then item.snapshotError = cam.error
     else if cam.status = "offline" then
         item.statusText = "Offline"
         item.snapshotError = cam.error
@@ -117,7 +133,7 @@ sub UpdateSnapshotJobs()
         interval = AsInt(m.settings.refreshSec, 3) * 1000
         for i = 0 to m.cameras.Count() - 1
             cam = m.cameras[i]
-            url = CameraThumbnailUri(cam)
+            url = CameraThumbnailUri(cam, ThumbnailWidth())
             if cam.status = "online" and url <> "" then
                 login = CameraLogin(cam, m.settings)
                 jobs.Push({ key: cam.id, url: url, user: login.user, pass: login.pass, intervalMs: interval })
@@ -126,6 +142,11 @@ sub UpdateSnapshotJobs()
     end if
     m.snapTask.jobs = jobs
 end sub
+
+function ThumbnailWidth() as Integer
+    if m.fixed then return 924
+    return 552
+end function
 
 sub OnGridFrame(event as Object)
     frame = event.GetData()
@@ -153,6 +174,8 @@ sub OnGridSelected()
         if cam = invalid then return
         if cam.status = "online" then
             OpenViewer(cam)
+        else if m.fixed and (cam.status = "login" or cam.status = "offline") then
+            ShowMessageDialog(CameraTitle(cam), [cam.error, cam.xaddr], ["Try again", "Cancel"], "offline", { id: cam.id, actions: ["reconnect"] })
         else if cam.status = "login" then
             StartLogin(cam)
         else if cam.status = "offline" then
@@ -179,24 +202,31 @@ sub OnGridOptions()
         buttons.Push("Stream: " + ProfileLabel(CameraProfile(cam)))
         actions.Push("stream")
     end if
-    buttons.Push("Rename")
-    actions.Push("rename")
-    if cam.ownLogin then
-        buttons.Push("Login: " + cam.user + " (this camera)")
+    if m.fixed then
+        buttons.Push("Reconnect")
+        actions.Push("reconnect")
+        buttons.Push("Settings")
+        actions.Push("settings")
     else
-        buttons.Push("Login: default")
+        buttons.Push("Rename")
+        actions.Push("rename")
+        if cam.ownLogin then
+            buttons.Push("Login: " + cam.user + " (this camera)")
+        else
+            buttons.Push("Login: default")
+        end if
+        actions.Push("login")
+        if cam.ownLogin then
+            buttons.Push("Use the default login")
+            actions.Push("defaultLogin")
+        end if
+        buttons.Push("Change address")
+        actions.Push("address")
+        buttons.Push("Reconnect")
+        actions.Push("reconnect")
+        buttons.Push("Remove camera")
+        actions.Push("remove")
     end if
-    actions.Push("login")
-    if cam.ownLogin then
-        buttons.Push("Use the default login")
-        actions.Push("defaultLogin")
-    end if
-    buttons.Push("Change address")
-    actions.Push("address")
-    buttons.Push("Reconnect")
-    actions.Push("reconnect")
-    buttons.Push("Remove camera")
-    actions.Push("remove")
 
     lines = [cam.xaddr]
     if cam.model <> "" then lines.Unshift(cam.model)
@@ -239,7 +269,7 @@ sub ProbeCamera(cam as Object)
 
     login = CameraLogin(cam, m.settings)
     task = CreateObject("roSGNode", "OnvifTask")
-    task.camera = { id: cam.id, xaddr: cam.xaddr, user: login.user, pass: login.pass, gen: cam.probeGen }
+    task.camera = { id: cam.id, xaddr: cam.xaddr, autoPort: AsBool(cam.autoPort), user: login.user, pass: login.pass, gen: cam.probeGen }
     task.ObserveFieldScoped("result", "OnProbeResult")
     task.control = "RUN"
     m.probeTasks[cam.probeGen.ToStr()] = task
@@ -262,6 +292,11 @@ sub OnProbeResult(event as Object)
         cam.profiles = res.info.profiles
         model = res.info.manufacturer + " " + res.info.model
         cam.model = model.Trim()
+        if res.info.deviceUrl <> cam.xaddr then
+            ' Found ONVIF on another port; remember it for next time.
+            cam.xaddr = res.info.deviceUrl
+            SaveCameras(m.cameras)
+        end if
     else if res.authFailed then
         cam.status = "login"
         cam.error = res.error
@@ -448,6 +483,8 @@ sub RunCameraAction(cam as Object, action as String)
         ShowKeyboardDialog("Camera address", ["IP address with optional port, or the full ONVIF device service URL."], cam.xaddr, false, "address", { id: cam.id })
     else if action = "reconnect" then
         ProbeCamera(cam)
+    else if action = "settings" then
+        OpenSettings()
     else if action = "remove" then
         ShowMessageDialog("Remove " + CameraTitle(cam) + "?", ["Search again or add it by address to bring it back."], ["Remove", "Cancel"], "remove", { id: cam.id })
     end if

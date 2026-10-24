@@ -1,5 +1,7 @@
 node_modules
 out/
+# Camera logins baked into the package; never commit it.
+presets.json
 # written by MediaMTX when run from this directory
 auto.crt
 auto.key

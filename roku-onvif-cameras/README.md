@@ -91,6 +91,35 @@ camera passwords and is open to private-network addresses (see
 - **Audio** plays only if the camera sends AAC. G.711 audio is dropped and
   the video plays silently.
 
+## Hard-coded cameras (camera wall)
+
+To build the camera list into the channel instead of discovering it, copy
+`presets.example.json` to `presets.json` and edit it. Only the addresses
+are required.
+
+```json
+{
+  "user": "admin",
+  "pass": "camera password",
+  "cameras": [
+    { "name": "Front Door", "address": "192.168.0.20" },
+    { "name": "Garage", "address": "192.168.0.21:8000", "user": "viewer", "pass": "other" }
+  ],
+  "settings": { "refreshSec": 1, "bridgeHost": "192.168.0.10" }
+}
+```
+
+`make` packs `presets.json` into the zip. Git ignores it, so the passwords
+never reach the repository. With presets, the channel works differently:
+
+- Up to four cameras fill the screen as a 2×2 wall, with no search or add
+  tiles. `*` opens a camera's options, which include Settings.
+- For a bare IP like `192.168.0.20`, the channel finds the ONVIF port itself
+  (80, 8000, 2020, 8899, 8080 or 5000) and remembers it.
+- Logins come only from the file. A camera that rejects its login shows the
+  error on its tile; fix `presets.json` and reinstall.
+- `settings` sets defaults; changes made in the Settings screen still win.
+
 ## Using the channel
 
 | Screen | Key | Action |
