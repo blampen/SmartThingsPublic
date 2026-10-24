@@ -5,21 +5,23 @@
 '       basicAuth (send credentials preemptively as HTTP Basic instead of
 '       answering a Digest challenge), toFile (GET into this path),
 '       timeoutMs (default 8000)
-' Returns { code, body, reason }. code is the HTTP status, a negative curl
-' error, or 0 when the request timed out.
+' Returns { code, body, reason, headers }. code is the HTTP status, a
+' negative curl error, or 0 when the request timed out.
 function HttpRequest(opts as Object) as Object
     xfer = HttpNewTransfer(opts)
     port = CreateObject("roMessagePort")
     xfer.SetMessagePort(port)
 
-    if not HttpStart(xfer, opts) then return { code: -1, body: "", reason: "Could not start request" }
+    if not HttpStart(xfer, opts) then return { code: -1, body: "", reason: "Could not start request", headers: {} }
 
     msg = wait(AsInt(opts.timeoutMs, 8000), port)
     if type(msg) = "roUrlEvent" then
-        return { code: msg.GetResponseCode(), body: StrOrEmpty(msg.GetString()), reason: StrOrEmpty(msg.GetFailureReason()) }
+        headers = msg.GetResponseHeaders()
+        if headers = invalid then headers = {}
+        return { code: msg.GetResponseCode(), body: StrOrEmpty(msg.GetString()), reason: StrOrEmpty(msg.GetFailureReason()), headers: headers }
     end if
     xfer.AsyncCancel()
-    return { code: 0, body: "", reason: "Timed out" }
+    return { code: 0, body: "", reason: "Timed out", headers: {} }
 end function
 
 function HttpNewTransfer(opts as Object) as Object

@@ -57,6 +57,8 @@ def parse_args():
     p.add_argument("--clock-skew", type=int, default=0, help="seconds the camera clock is ahead of real time")
     p.add_argument("--rtsp-url", default="rtsp://{host}:8554/fakecam", help="URL returned by GetStreamUri")
     p.add_argument("--snapshot-auth", choices=["basic", "digest", "none"], default="digest")
+    p.add_argument("--no-onvif-snapshot", action="store_true", help="GetSnapshotUri is not supported (like many cameras)")
+    p.add_argument("--vendor-path", help="also serve snapshots at this path, e.g. /ISAPI/Streaming/channels/101/picture")
     p.add_argument("--name", default="Fake Camera")
     p.add_argument("--no-discovery", action="store_true")
     return p.parse_args()
@@ -175,6 +177,8 @@ def op_stream_uri(envelope):
 
 
 def op_snapshot_uri(envelope):
+    if ARGS.no_onvif_snapshot:
+        return None
     return (
         "<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>%s/snapshot.jpg?profile=%s</tt:Uri>"
         "<tt:InvalidAfterConnect>false</tt:InvalidAfterConnect><tt:InvalidAfterReboot>false</tt:InvalidAfterReboot>"
@@ -209,7 +213,10 @@ def handle_soap(raw):
         if problem:
             log("auth rejected for %s: %s" % (op, problem))
             return fault("ter:NotAuthorized", "Sender not Authorized")
-    return 200, ENVELOPE.format(body=handler(envelope))
+    body = handler(envelope)
+    if body is None:
+        return fault("ter:ActionNotSupported", "%s not supported" % op)
+    return 200, ENVELOPE.format(body=body)
 
 
 # ------------------------------------------------------------------ snapshots
@@ -294,7 +301,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send(status, body, "application/soap+xml; charset=utf-8")
 
     def do_GET(self):
-        if not self.path.startswith("/snapshot.jpg"):
+        path = self.path.split("?")[0]
+        if path != "/snapshot.jpg" and path != ARGS.vendor_path:
             return self.send(404, "not found", "text/plain")
         if not check_http_auth(self.headers.get("Authorization")):
             if ARGS.snapshot_auth == "digest":

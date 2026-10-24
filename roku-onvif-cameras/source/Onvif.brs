@@ -385,6 +385,63 @@ function OnvifFindDeviceUrl(host as String, ports as Object, skipUrl as String) 
     return ""
 end function
 
+' Snapshot addresses the common brands serve on their web port, for cameras
+' whose ONVIF service doesn't give one. Smaller pictures first where the
+' brand offers them. {user} and {pass} are filled in (escaped) for brands
+' that take the login in the query string; the others use HTTP auth.
+function SnapshotCandidates() as Object
+    return [
+        "/ISAPI/Streaming/channels/102/picture" ' Hikvision and its OEMs, sub stream
+        "/ISAPI/Streaming/channels/101/picture" ' Hikvision, main stream
+        "/cgi-bin/snapshot.cgi?channel=1" ' Dahua, Amcrest, Lorex
+        "/cgi-bin/api.cgi?cmd=Snap&channel=0&rs=roku&width=640&height=360&user={user}&password={pass}" ' Reolink
+        "/images/snapshot.jpg" ' Uniview
+        "/axis-cgi/jpg/image.cgi?resolution=640x360" ' Axis
+        "/webcapture.jpg?command=snap&channel=1&user={user}&password={pass}" ' Xiongmai-based
+        "/cgi-bin/CGIProxy.fcgi?cmd=snapPicture2&usr={user}&pwd={pass}" ' Foscam
+        "/snapshot.jpg"
+        "/tmpfs/auto.jpg"
+    ]
+end function
+
+' Tries the snapshot candidates on the camera's ONVIF port and on port 80
+' and returns the first URL that serves a JPEG, or "". Stops at the first
+' rejected login: some cameras lock out an address after a few.
+function OnvifFindSnapshotUrl(deviceUrl as String, user as String, pass as String) as String
+    parts = UrlParse(deviceUrl)
+    if parts = invalid then return ""
+    bases = ["http://" + parts.host]
+    if parts.port <> "" and parts.port <> "80" then bases.Unshift("http://" + parts.host + ":" + parts.port)
+    file = "tmp:/snapfind_" + SafeKey(parts.host) + ".jpg"
+    found = ""
+    for each base in bases
+        for each path in SnapshotCandidates()
+            url = base + path.Replace("{user}", UrlEscape(user)).Replace("{pass}", UrlEscape(pass))
+            result = FetchJpeg(url, user, pass, file)
+            if result = "jpeg" then found = url
+            if result <> "miss" then exit for
+        end for
+        if found <> "" then exit for
+    end for
+    DeleteFile(file)
+    return found
+end function
+
+' Returns "jpeg" if url serves a JPEG, "denied" if the login was refused,
+' otherwise "miss".
+function FetchJpeg(url as String, user as String, pass as String, file as String) as String
+    res = HttpRequest({ url: url, user: user, pass: pass, toFile: file, timeoutMs: 4000 })
+    if res.code = 401 and LCase(Left(StrOrEmpty(res.headers["www-authenticate"]), 5)) = "basic" then
+        ' The Roku only answers Digest challenges; this one wants Basic.
+        res = HttpRequest({ url: url, user: user, pass: pass, basicAuth: true, toFile: file, timeoutMs: 4000 })
+    end if
+    if res.code = 401 or res.code = 403 then return "denied"
+    if res.code <> 200 then return "miss"
+    bytes = CreateObject("roByteArray")
+    if bytes.ReadFile(file, 0, 2) and bytes.Count() = 2 and bytes[0] = 255 and bytes[1] = 216 then return "jpeg"
+    return "miss"
+end function
+
 ' Talks to one camera and fills in everything the app needs to show it.
 ' cam: { id, name, xaddr, user, pass, autoPort }  (user/pass already resolved)
 ' autoPort: the address was a bare IP, so look for ONVIF on the usual ports
@@ -429,12 +486,23 @@ function OnvifProbeCamera(cam as Object) as Object
         return out
     end if
 
+    hasSnapshot = false
     for each p in profiles.profiles
         stream = OnvifGetStreamUri(mediaUrl, p.token, ctx)
         if stream.ok then p.streamUri = UrlRehost(stream.uri, host)
         snap = OnvifGetSnapshotUri(mediaUrl, p.token, ctx)
-        if snap.ok then p.snapshotUri = UrlRehost(snap.uri, host)
+        if snap.ok and snap.uri <> "" then
+            p.snapshotUri = UrlRehost(snap.uri, host)
+            hasSnapshot = true
+        end if
     end for
+    if not hasSnapshot then
+        ' Many cameras skip ONVIF snapshots but serve one on their web port.
+        url = OnvifFindSnapshotUrl(deviceUrl, ctx.user, ctx.pass)
+        for each p in profiles.profiles
+            p.snapshotUri = url
+        end for
+    end if
 
     info = { deviceUrl: deviceUrl, manufacturer: "", model: "", timeOffset: ctx.timeOffset, mediaUrl: mediaUrl, profiles: profiles.profiles }
     device = OnvifGetDeviceInformation(deviceUrl, ctx)

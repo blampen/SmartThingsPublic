@@ -218,8 +218,12 @@ sub UpdateTiles()
         if i < cams.Count() and not m.snaps[i].hasImage then
             cam = cams[i]
             text = CameraTitle(cam) + Chr(10)
-            if cam.status = "online" then
+            if cam.status = "online" and CameraThumbnailUri(cam, 960) <> "" then
                 text = text + "Loading picture..."
+            else if cam.status = "online" and BridgeConfigured(m.top.settings) then
+                text = text + "Starting live video..."
+            else if cam.status = "online" then
+                text = text + "This camera has no snapshots. Live video needs the video bridge (* then Settings)."
             else if cam.status = "offline" or cam.status = "login" then
                 text = text + cam.error
             else

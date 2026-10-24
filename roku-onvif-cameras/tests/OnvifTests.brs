@@ -20,6 +20,10 @@ sub Main(args as Dynamic)
         TestSnapshots(camera)
         TestSnapshotConcurrency(camera)
     end if
+    camera2 = StrOrEmpty(args.camera2)
+    if camera2 <> "" then
+        TestVendorSnapshotFallback(camera2)
+    end if
     bridge = StrOrEmpty(args.bridge)
     if bridge <> "" then TestBridge(camera, bridge)
 
@@ -245,6 +249,20 @@ sub TestProbeAgainstFakeCamera(address as String, skew as Integer, rtspPort as S
     gone = OnvifProbeCamera({ xaddr: "http://127.0.0.1:9/onvif/device_service", user: "admin", pass: "secret" })
     Check("unreachable camera fails", gone.ok, false)
     Check("unreachable message names host", gone.error.InStr("127.0.0.1") >= 0, true)
+end sub
+
+sub TestVendorSnapshotFallback(address as String)
+    deviceUrl = DeviceServiceUrlFor(address)
+    result = OnvifProbeCamera({ xaddr: deviceUrl, user: "admin", pass: "secret" })
+    Check("camera without onvif snapshots probes", result.ok, true)
+    if not result.ok then return
+    expected = "http://" + address + "/ISAPI/Streaming/channels/101/picture"
+    Check("vendor snapshot found", CameraThumbnailUri({ profiles: result.info.profiles }), expected)
+    frames = PollSnapshots([{ key: "vendor", url: expected, user: "admin", pass: "secret", intervalMs: 200 }], 1, 8000)
+    vendor = frames["vendor"]
+    Check("vendor snapshot fetched", vendor.Count() > 0 and vendor[0].ok and vendor[0].jpeg, true)
+    ' A rejected login ends the search instead of trying every address.
+    Check("search stops on wrong login", OnvifFindSnapshotUrl(deviceUrl, "admin", "wrong"), "")
 end sub
 
 sub TestSnapshotConcurrency(address as String)

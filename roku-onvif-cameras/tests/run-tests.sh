@@ -12,6 +12,7 @@ BRS_CLI="${BRS_CLI:-$ROOT/node_modules/.bin/brs-cli}"
 MEDIAMTX="${MEDIAMTX:-$(command -v mediamtx || true)}"
 WORK="$(mktemp -d)"
 CAM_PORT=18081
+CAM2_PORT=18082
 CAM_RTSP_PORT=18554
 SKEW=3600
 PIDS=()
@@ -44,7 +45,15 @@ python3 "$ROOT/tests/fake_onvif_camera.py" --host 127.0.0.1 --port "$CAM_PORT" \
 PIDS+=($!)
 wait_for_port "$CAM_PORT"
 
-LAUNCH="camera=127.0.0.1:$CAM_PORT,skew=$SKEW,rtsp=$CAM_RTSP_PORT"
+# A second camera without ONVIF snapshots, serving one at the Hikvision
+# address instead.
+python3 "$ROOT/tests/fake_onvif_camera.py" --host 127.0.0.1 --port "$CAM2_PORT" \
+    --snapshot-auth basic --no-discovery --no-onvif-snapshot \
+    --vendor-path /ISAPI/Streaming/channels/101/picture > "$WORK/camera2.log" 2>&1 &
+PIDS+=($!)
+wait_for_port "$CAM2_PORT"
+
+LAUNCH="camera=127.0.0.1:$CAM_PORT,skew=$SKEW,rtsp=$CAM_RTSP_PORT,camera2=127.0.0.1:$CAM2_PORT"
 
 if [[ -n "$MEDIAMTX" ]] && command -v ffmpeg > /dev/null; then
     # A second MediaMTX plays the camera's own RTSP server, fed by a test
