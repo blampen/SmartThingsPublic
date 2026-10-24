@@ -24,7 +24,10 @@
             poller = NewSnapshotPoller(port)
             if m.top.jobs <> invalid then poller.setJobs(m.top.jobs)
 
-            while LCase(m.top.control) <> "stop"
+            ' Every m.top access from this thread waits on the render
+            ' thread, so learn about "stop" from the port, not by polling.
+            running = true
+            while running
                 for each frame in poller.tick()
                     m.top.frame = frame
                 end for
@@ -38,6 +41,8 @@
                     jobs = msg.GetData()
                     if jobs = invalid then jobs = []
                     poller.setJobs(jobs)
+                else if msgType = "roSGNodeEvent" and msg.GetField() = "control" then
+                    running = LCase(msg.GetData()) <> "stop"
                 end if
             end while
             poller.stopAll()

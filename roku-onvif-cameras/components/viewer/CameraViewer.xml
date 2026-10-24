@@ -12,6 +12,8 @@
         <field id="closed" type="boolean" alwaysNotify="true" />
         <!-- { id, profile } when the user picks another stream -->
         <field id="profileChanged" type="assocarray" />
+        <!-- false: live video only, never snapshots (retry instead) -->
+        <field id="allowSnapshots" type="boolean" value="true" />
     </interface>
     <script type="text/brightscript" uri="CameraViewer.brs" />
     <script type="text/brightscript" uri="pkg:/source/Util.brs" />

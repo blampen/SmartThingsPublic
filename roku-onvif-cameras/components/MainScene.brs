@@ -40,9 +40,13 @@ sub init()
     m.settingsScreen.ObserveFieldScoped("clearCameras", "OnClearCameras")
     m.toastTimer.ObserveFieldScoped("fire", "HideToast")
 
-    m.snapTask = CreateObject("roSGNode", "SnapshotTask")
-    m.snapTask.ObserveFieldScoped("frame", "OnGridFrame")
-    m.snapTask.control = "RUN"
+    ' Grid thumbnails. Fixed cameras are live video only: no snapshots.
+    m.snapTask = invalid
+    if not m.fixed then
+        m.snapTask = CreateObject("roSGNode", "SnapshotTask")
+        m.snapTask.ObserveFieldScoped("frame", "OnGridFrame")
+        m.snapTask.control = "RUN"
+    end if
 
     if m.fixed then
         m.grid.visible = false
@@ -148,7 +152,7 @@ sub UpdateSnapshotJobs()
             end if
         end for
     end if
-    m.snapTask.jobs = jobs
+    if m.snapTask <> invalid then m.snapTask.jobs = jobs
 end sub
 
 sub OnGridFrame(event as Object)
@@ -289,7 +293,7 @@ sub ProbeCamera(cam as Object)
 
     login = CameraLogin(cam, m.settings)
     task = CreateObject("roSGNode", "OnvifTask")
-    task.camera = { id: cam.id, xaddr: cam.xaddr, autoPort: AsBool(cam.autoPort), user: login.user, pass: login.pass, gen: cam.probeGen }
+    task.camera = { id: cam.id, xaddr: cam.xaddr, autoPort: AsBool(cam.autoPort), wantSnapshots: not m.fixed, user: login.user, pass: login.pass, gen: cam.probeGen }
     task.ObserveFieldScoped("result", "OnProbeResult")
     task.control = "RUN"
     m.probeTasks[cam.probeGen.ToStr()] = task
@@ -333,6 +337,7 @@ end sub
 ' The LiveWall works on a copy of the list; hand it the latest.
 sub CamerasChanged()
     if m.fixed then m.wall.cameras = m.cameras
+    if m.screen = "viewer" then m.viewer.cameras = m.cameras
 end sub
 
 sub AddCamera(src as Object)
@@ -571,6 +576,7 @@ sub OpenViewer(cam as Object)
     m.screen = "viewer"
     UpdateSnapshotJobs()
     m.viewer.settings = m.settings
+    m.viewer.allowSnapshots = not m.fixed
     m.viewer.cameras = m.cameras
     m.viewer.index = CameraIndex(cam.id)
     HideHome()

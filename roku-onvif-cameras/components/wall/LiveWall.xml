@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Home screen for a fixed camera list: four feeds edge to edge, no gaps.
-     Live video is the bridge's "wall" stream (one picture, one audio track
-     per camera); until it plays, or without a bridge, each quarter shows
-     its camera's snapshots. The D-pad highlights a camera and switches the
-     sound to it; OK reports `selected`, * reports `optionsPressed`. -->
+<!-- Home screen for a fixed camera list: four live feeds edge to edge, no
+     gaps, from the bridge's "wall" stream (one picture, one audio track per
+     camera). The D-pad highlights a camera and switches the sound to it; OK
+     reports `selected`, * reports `optionsPressed`. Live video only: without
+     a bridge it explains how to set one up. -->
 <component name="LiveWall" extends="Group">
     <interface>
         <field id="cameras" type="array" onChange="OnCameras" />
         <field id="settings" type="assocarray" />
-        <!-- true starts the wall, false stops video and polling -->
+        <!-- true starts the wall, false stops the video -->
         <field id="active" type="boolean" onChange="OnActive" />
         <field id="focusIndex" type="integer" value="0" />
         <field id="selected" type="integer" alwaysNotify="true" />
@@ -21,15 +21,17 @@
     <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
     <children>
         <Rectangle width="1920" height="1080" color="0x000000FF" />
-        <SnapshotPoster id="snap0" translation="[0,0]" width="960" height="540" />
-        <SnapshotPoster id="snap1" translation="[960,0]" width="960" height="540" />
-        <SnapshotPoster id="snap2" translation="[0,540]" width="960" height="540" />
-        <SnapshotPoster id="snap3" translation="[960,540]" width="960" height="540" />
+        <!-- Camera name and any problem, shown until the video plays. -->
         <Label id="label0" translation="[40,0]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
         <Label id="label1" translation="[1000,0]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
         <Label id="label2" translation="[40,540]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
         <Label id="label3" translation="[1000,540]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
         <Video id="video" width="1920" height="1080" visible="false" enableUI="false" />
+
+        <!-- Starting / problem status, centred. -->
+        <BusySpinner id="spinner" translation="[912,452]" visible="false" />
+        <Rectangle id="statusBox" translation="[360,568]" width="1200" height="64" color="0x000000C0" visible="false" />
+        <Label id="status" translation="[380,568]" width="1160" height="64" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" font="font:SmallSystemFont" />
 
         <!-- Highlight: an outline inside the selected quarter and its name,
              shown for a few seconds after each key press. -->
@@ -43,6 +45,28 @@
         </Group>
         <!-- Stays on the quarter whose sound is playing. -->
         <Poster id="speaker" width="64" height="64" uri="pkg:/images/speaker.png" visible="false" />
+
+        <!-- Shown when no bridge is set up. -->
+        <Group id="setup" visible="false">
+            <Rectangle translation="[310,250]" width="1300" height="580" color="0x1C232BFF" />
+            <Label translation="[370,300]" width="1180" text="Live video needs the video bridge" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
+            <Label
+                translation="[370,390]"
+                width="1180"
+                wrap="true"
+                lineSpacing="8"
+                color="0xC8D1DAFF"
+                font="font:MediumSystemFont"
+                text="A Roku can't play the RTSP streams cameras send. The video bridge, a small program on a computer or NAS that stays on, converts them for the TV and builds the four-camera picture." />
+            <Label
+                translation="[370,620]"
+                width="1180"
+                wrap="true"
+                lineSpacing="8"
+                color="0xFFFFFFFF"
+                font="font:MediumBoldSystemFont"
+                text="Once it's running, press * and choose Settings, then Video bridge, and enter that computer's IP address." />
+        </Group>
 
         <Timer id="hintTimer" duration="5" />
         <Timer id="settleTimer" duration="20" />

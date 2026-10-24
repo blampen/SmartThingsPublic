@@ -1,13 +1,13 @@
 sub init()
     m.video = m.top.FindNode("video")
-    m.snaps = []
     m.labels = []
     for i = 0 to 3
-        poster = m.top.FindNode("snap" + i.ToStr())
-        poster.ObserveFieldScoped("hasImage", "UpdateTiles")
-        m.snaps.Push(poster)
         m.labels.Push(m.top.FindNode("label" + i.ToStr()))
     end for
+    m.spinner = m.top.FindNode("spinner")
+    m.statusBox = m.top.FindNode("statusBox")
+    m.status = m.top.FindNode("status")
+    m.setup = m.top.FindNode("setup")
     m.highlight = m.top.FindNode("highlight")
     m.tag = m.top.FindNode("tag")
     m.tagBox = m.top.FindNode("tagBox")
@@ -17,6 +17,11 @@ sub init()
     m.startTimer = m.top.FindNode("startTimer")
     m.retryTimer = m.top.FindNode("retryTimer")
 
+    m.spinner.poster.uri = "pkg:/images/spinner.png"
+    m.spinner.poster.width = 96
+    m.spinner.poster.height = 96
+    m.spinner.spinInterval = 1
+
     m.video.ObserveFieldScoped("state", "OnVideoState")
     m.video.ObserveFieldScoped("availableAudioTracks", "SelectAudio")
     m.hintTimer.ObserveFieldScoped("fire", "HideHint")
@@ -24,22 +29,19 @@ sub init()
     m.startTimer.ObserveFieldScoped("fire", "OnStartTimeout")
     m.retryTimer.ObserveFieldScoped("fire", "StartVideo")
 
-    m.snapTask = invalid
     m.bridgeTask = invalid
     m.playing = false
     m.pending = false
+    m.problem = ""
     m.retryDelay = 5
 end sub
 
 sub OnActive()
     if m.top.active then
-        m.snapTask = CreateObject("roSGNode", "SnapshotTask")
-        m.snapTask.ObserveFieldScoped("frame", "OnFrame")
-        m.snapTask.control = "RUN"
         m.retryDelay = 5
+        m.problem = ""
         m.pending = BridgeConfigured(m.top.settings)
-        UpdateTiles()
-        UpdateSnapshotJobs()
+        UpdateStatus()
         ShowHint()
         ' Register the cameras with the bridge once all of them have
         ' answered (or failed), so their stream addresses are known.
@@ -54,20 +56,15 @@ sub OnActive()
         m.pending = false
         StopVideo()
         CancelBridgeRequest()
-        if m.snapTask <> invalid then
-            m.snapTask.UnobserveFieldScoped("frame")
-            m.snapTask.control = "STOP"
-            m.snapTask = invalid
-        end if
         for each timer in [m.hintTimer, m.settleTimer, m.startTimer, m.retryTimer]
             timer.control = "stop"
         end for
+        SetSpinner(false)
     end if
 end sub
 
 sub OnCameras()
-    UpdateTiles()
-    UpdateSnapshotJobs()
+    UpdateStatus()
     UpdateTag()
     if m.pending and m.bridgeTask = invalid and CamerasSettled() then StartVideo()
 end sub
@@ -102,6 +99,7 @@ sub StartVideo()
     m.bridgeTask.control = "RUN"
     ' The bridge needs a few seconds to open every camera the first time.
     m.startTimer.control = "start"
+    UpdateStatus()
 end sub
 
 sub OnBridgeResponse(event as Object)
@@ -110,7 +108,7 @@ sub OnBridgeResponse(event as Object)
     res = event.GetData()
     if not res.ok then
         m.startTimer.control = "stop"
-        RetryLater()
+        RetryLater("Can't reach the video bridge at " + m.top.settings.bridgeHost + " (" + res.error + ")")
         return
     end if
     content = CreateObject("roSGNode", "ContentNode")
@@ -126,18 +124,20 @@ sub OnVideoState()
     if state = "playing" then
         m.startTimer.control = "stop"
         m.playing = true
+        m.problem = ""
         m.retryDelay = 5
-        ' The video covers the snapshots; stop fetching them.
         m.video.visible = true
-        UpdateSnapshotJobs()
         SelectAudio()
+        UpdateStatus()
         UpdateTag()
         UpdateSpeaker()
-    else if state = "error" or state = "finished" then
-        ' "finished" means the bridge restarted the wall (e.g. a camera came
-        ' back); pick it up again shortly.
+    else if state = "error" then
         StopVideo()
-        RetryLater()
+        RetryLater("Live video stopped (" + m.video.errorMsg + ")")
+    else if state = "finished" then
+        ' The bridge rebuilt the wall (a camera dropped out or came back).
+        StopVideo()
+        RetryLater("Reconnecting")
     end if
 end sub
 
@@ -145,14 +145,16 @@ sub OnStartTimeout()
     if m.playing then return
     StopVideo()
     CancelBridgeRequest()
-    RetryLater()
+    RetryLater("Live video is taking too long to start")
 end sub
 
-sub RetryLater()
+sub RetryLater(reason as String)
     if not m.top.active then return
+    m.problem = reason
     m.retryTimer.duration = m.retryDelay
     m.retryTimer.control = "start"
-    m.retryDelay = MinInt(m.retryDelay * 2, 60)
+    m.retryDelay = MinInt(m.retryDelay * 2, 30)
+    UpdateStatus()
 end sub
 
 sub StopVideo()
@@ -163,7 +165,7 @@ sub StopVideo()
     end if
     m.video.visible = false
     m.playing = false
-    UpdateSnapshotJobs()
+    UpdateStatus()
     UpdateTag()
     UpdateSpeaker()
 end sub
@@ -183,55 +185,44 @@ sub SelectAudio()
     if track <> "" and m.video.audioTrack <> track then m.video.audioTrack = track
 end sub
 
-' ---------------------------------------------------------------- snapshots
+' ---------------------------------------------------------------- status
 
-sub UpdateSnapshotJobs()
-    if m.snapTask = invalid then return
-    jobs = []
-    if not m.playing then
-        cams = m.top.cameras
-        settings = m.top.settings
-        for i = 0 to MinInt(cams.Count(), 4) - 1
-            cam = cams[i]
-            url = CameraThumbnailUri(cam, 960)
-            if cam.status = "online" and url <> "" then
-                login = CameraLogin(cam, settings)
-                jobs.Push({ key: "wall" + i.ToStr(), url: url, user: login.user, pass: login.pass, intervalMs: AsInt(settings.refreshSec, 1) * 1000 })
-            end if
-        end for
+' Everything shown while there's no video: the setup panel without a
+' bridge, otherwise a spinner, a status line and each camera's name or
+' problem in its quarter.
+sub UpdateStatus()
+    configured = BridgeConfigured(m.top.settings)
+    m.setup.visible = not configured and m.top.active
+    waiting = configured and m.top.active and not m.playing
+
+    SetSpinner(waiting and m.problem = "")
+    text = ""
+    if waiting then
+        text = "Starting live video..."
+        if m.problem <> "" then text = m.problem + " - trying again"
     end if
-    m.snapTask.jobs = jobs
-end sub
+    m.status.text = text
+    m.statusBox.visible = text <> ""
 
-sub OnFrame(event as Object)
-    frame = event.GetData()
-    if not frame.ok then return
-    index = AsInt(Mid(frame.key, 5), -1)
-    if index >= 0 and index < 4 then m.snaps[index].uri = frame.uri
-end sub
-
-' Text shown in a quarter that has no picture yet.
-sub UpdateTiles()
     cams = m.top.cameras
     for i = 0 to 3
-        text = ""
-        if i < cams.Count() and not m.snaps[i].hasImage then
+        label = ""
+        if waiting and i < cams.Count() then
             cam = cams[i]
-            text = CameraTitle(cam) + Chr(10)
-            if cam.status = "online" and CameraThumbnailUri(cam, 960) <> "" then
-                text = text + "Loading picture..."
-            else if cam.status = "online" and BridgeConfigured(m.top.settings) then
-                text = text + "Starting live video..."
-            else if cam.status = "online" then
-                text = text + "This camera has no snapshots. Live video needs the video bridge (* then Settings)."
-            else if cam.status = "offline" or cam.status = "login" then
-                text = text + cam.error
-            else
-                text = text + "Connecting..."
-            end if
+            label = CameraTitle(cam)
+            if cam.status = "offline" or cam.status = "login" then label = label + Chr(10) + cam.error
         end if
-        m.labels[i].text = text
+        m.labels[i].text = label
     end for
+end sub
+
+sub SetSpinner(visible as Boolean)
+    m.spinner.visible = visible
+    if visible then
+        m.spinner.control = "start"
+    else
+        m.spinner.control = "stop"
+    end if
 end sub
 
 ' ---------------------------------------------------------------- highlight
@@ -266,7 +257,7 @@ sub UpdateTag()
     else if cam.status <> "online" then
         note = "   connecting..."
     else if not BridgeConfigured(m.top.settings) then
-        note = "   snapshots (sound needs the video bridge)"
+        note = "   no live video until the bridge is set up"
     else if not m.playing then
         note = "   starting live video..."
     end if

@@ -443,9 +443,11 @@ function FetchJpeg(url as String, user as String, pass as String, file as String
 end function
 
 ' Talks to one camera and fills in everything the app needs to show it.
-' cam: { id, name, xaddr, user, pass, autoPort }  (user/pass already resolved)
+' cam: { id, name, xaddr, user, pass, autoPort, wantSnapshots }
+'      (user/pass already resolved)
 ' autoPort: the address was a bare IP, so look for ONVIF on the usual ports
-' if xaddr doesn't answer.
+' if xaddr doesn't answer. wantSnapshots (default true): false skips
+' looking up snapshot URLs.
 ' Returns { ok, authFailed, error, info: { deviceUrl, manufacturer, model,
 '           timeOffset, mediaUrl, profiles } }.
 function OnvifProbeCamera(cam as Object) as Object
@@ -486,17 +488,20 @@ function OnvifProbeCamera(cam as Object) as Object
         return out
     end if
 
+    wantSnapshots = AsBool(cam.wantSnapshots, true)
     hasSnapshot = false
     for each p in profiles.profiles
         stream = OnvifGetStreamUri(mediaUrl, p.token, ctx)
         if stream.ok then p.streamUri = UrlRehost(stream.uri, host)
-        snap = OnvifGetSnapshotUri(mediaUrl, p.token, ctx)
-        if snap.ok and snap.uri <> "" then
-            p.snapshotUri = UrlRehost(snap.uri, host)
-            hasSnapshot = true
+        if wantSnapshots then
+            snap = OnvifGetSnapshotUri(mediaUrl, p.token, ctx)
+            if snap.ok and snap.uri <> "" then
+                p.snapshotUri = UrlRehost(snap.uri, host)
+                hasSnapshot = true
+            end if
         end if
     end for
-    if not hasSnapshot then
+    if wantSnapshots and not hasSnapshot then
         ' Many cameras skip ONVIF snapshots but serve one on their web port.
         url = OnvifFindSnapshotUrl(deviceUrl, ctx.user, ctx.pass)
         for each p in profiles.profiles

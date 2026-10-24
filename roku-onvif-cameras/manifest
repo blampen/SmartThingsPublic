@@ -2,7 +2,7 @@ title=ONVIF Cameras
 subtitle=Live view for your ONVIF IP cameras
 major_version=1
 minor_version=0
-build_version=3
+build_version=4
 
 mm_icon_focus_fhd=pkg:/images/icon_focus_fhd.png
 mm_icon_focus_hd=pkg:/images/icon_focus_hd.png

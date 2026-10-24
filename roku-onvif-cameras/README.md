@@ -39,7 +39,10 @@ video at a time. Live video therefore goes through a bridge on your network:
   re-encoding (H.265 stays H.265). Only the sound is converted to AAC, since
   cameras usually send G.711, which the Roku can't play.
 
-Without a bridge the channel still works, with snapshots instead of video:
+With the camera list built in (presets), the channel is live video only:
+the wall and full screen play the bridge's streams, and without a bridge
+the wall shows how to set one up. With discovery and no bridge, the
+channel still works, with snapshots instead of video:
 
 | Mode | Needs | What you get |
 | --- | --- | --- |
@@ -108,8 +111,8 @@ camera passwords and is open to private-network addresses (see
   on the main stream, the sub stream, or both. The wall takes sound from the
   sub stream if it has it, otherwise from the main stream.
 - **Video settings:** H.264 or H.265. H.265 full screen needs a 4K Roku or
-  4K Roku TV; the channel checks and falls back to snapshots with a
-  message if the TV can't decode it. Set the I-frame (keyframe) interval
+  4K Roku TV; the channel checks and shows a message (or, with discovery,
+  falls back to snapshots) if the TV can't decode it. Set the I-frame (keyframe) interval
   equal to the frame rate for the lowest delay. Give the sub stream at
   least 640×360; it fills a quarter of the wall.
 
@@ -141,6 +144,10 @@ never reach the repository. With presets, the channel works differently:
   (80, 8000, 2020, 8899, 8080 or 5000) and remembers it.
 - Logins come only from the file. A camera that rejects its login shows the
   error in its quarter; fix `presets.json` and reinstall.
+- Video only: no snapshots are fetched, on the wall or full screen. Until
+  the bridge is set up, the wall shows how to do it. Put the bridge's IP in
+  `settings.bridgeHost` to have it set from the start.
+- Settings has only the bridge items.
 - `settings` sets defaults; changes made in the Settings screen still win.
 
 ## Using the channel
@@ -155,7 +162,7 @@ never reach the repository. With presets, the channel works differently:
 | Full screen | Back | Return to the wall or grid |
 | Full screen | Left / Right | Previous / next camera |
 | Full screen | Up / Down | Higher / lower quality stream (camera profile) |
-| Full screen | `*` | Switch between live video and snapshots |
+| Full screen | `*` | Switch between live video and snapshots (not with presets) |
 | Full screen | OK | Show / hide the info bar |
 | Full screen | Replay | Reconnect |
 
@@ -171,8 +178,8 @@ icon marks the camera you're hearing.
 - **"Login needed" or "Login failed".** Check that you are using the camera's
   *ONVIF* user (see above). The channel corrects for clock differences
   between the Roku and the camera, so time settings aren't the cause.
-- **The wall shows snapshots, not video.** The channel keeps retrying the
-  bridge. To find the cause:
+- **The wall stays on "Starting live video" or shows an error.** The
+  channel keeps retrying the bridge. To find the cause:
   - Check the bridge log: `docker logs roku-camera-bridge`.
   - Open the wall in VLC: `http://<bridge ip>:8888/wall/index.m3u8`, or a
     single camera at `rtsp://<bridge ip>:8554/cam1_main`.
@@ -181,8 +188,9 @@ icon marks the camera you're hearing.
   rebuilds when the camera comes back.
 - **No sound.** Turn on audio in the camera's stream settings (see above).
   Sound needs the bridge.
-- **Full screen falls back to snapshots.** Look at the info bar (press OK):
-  it says why, for example an H.265 stream on a TV that can't decode H.265.
+- **Full screen shows a message or falls back to snapshots.** Look at the
+  info bar (press OK): it says why, for example an H.265 stream on a TV that
+  can't decode H.265.
 
 ## Limitations
 

@@ -22,6 +22,7 @@ sub init()
     m.clockTimer.ObserveFieldScoped("fire", "UpdateClock")
     m.retryTimer.ObserveFieldScoped("fire", "OnRetry")
     m.startTimer.ObserveFieldScoped("fire", "OnStartTimeout")
+    m.top.ObserveFieldScoped("cameras", "OnCameras")
     device = CreateObject("roDeviceInfo")
     m.clock12 = device.GetClockFormat() = "12h"
     m.canHevc = AsBool(device.CanDecodeVideo({ Codec: "hevc" }).result)
@@ -33,15 +34,25 @@ sub init()
     m.mode = ""
     m.forceSnapshots = false
     m.videoRetries = 0
+    m.retryDelay = 5
+    m.waitingForCamera = false
+    m.hints = m.top.FindNode("hints")
 end sub
 
 sub OnActive()
     if m.top.active then
         m.cameras = m.top.cameras
-        m.forceSnapshots = not AsBool(m.top.settings.preferVideo, true)
-        m.snapTask = CreateObject("roSGNode", "SnapshotTask")
-        m.snapTask.ObserveFieldScoped("frame", "OnFrame")
-        m.snapTask.control = "RUN"
+        m.retryDelay = 5
+        if m.top.allowSnapshots then
+            m.forceSnapshots = not AsBool(m.top.settings.preferVideo, true)
+            m.snapTask = CreateObject("roSGNode", "SnapshotTask")
+            m.snapTask.ObserveFieldScoped("frame", "OnFrame")
+            m.snapTask.control = "RUN"
+            m.hints.text = "Left / Right  camera        Up / Down  stream quality        *  video / snapshots        OK  hide info        Replay  reconnect"
+        else
+            m.forceSnapshots = false
+            m.hints.text = "Left / Right  camera        Up / Down  stream quality        OK  hide info        Replay  reconnect        Back  all cameras"
+        end if
         m.clockTimer.control = "start"
         UpdateClock()
         ShowCamera()
@@ -58,12 +69,23 @@ sub OnActive()
         m.retryTimer.control = "stop"
         m.startTimer.control = "stop"
         m.snapshot.uri = ""
+        m.waitingForCamera = false
     end if
 end sub
 
 function CurrentCamera() as Object
     return m.cameras[m.top.index]
 end function
+
+' Updated camera records while open: start the camera that was still
+' connecting as soon as it answers.
+sub OnCameras()
+    if not m.top.active or not m.waitingForCamera then return
+    cams = m.top.cameras
+    if m.top.index >= cams.Count() then return
+    m.cameras = cams
+    if CurrentCamera().status <> "new" and CurrentCamera().status <> "probing" then ShowCamera()
+end sub
 
 ' (Re)starts viewing the current camera in the current mode.
 sub ShowCamera()
@@ -73,6 +95,7 @@ sub ShowCamera()
     m.snapshot.uri = ""
     m.message.text = ""
     m.videoRetries = 0
+    m.waitingForCamera = false
 
     cam = CurrentCamera()
     profile = CameraProfile(cam)
@@ -82,6 +105,7 @@ sub ShowCamera()
 
     if cam.status <> "online" or profile = invalid then
         m.mode = ""
+        m.waitingForCamera = cam.status = "new" or cam.status = "probing"
         SetSnapshotJob("", 0)
         m.detail.text = cam.xaddr
         reason = StrOrEmpty(cam.error)
@@ -90,22 +114,36 @@ sub ShowCamera()
         return
     end if
 
-    if IsHevc(profile) and not m.canHevc and not m.forceSnapshots then
-        StartSnapshots("snapshots - this TV can't decode H.265; set the camera's main stream to H.264")
-    else if not m.forceSnapshots and BridgeConfigured(m.top.settings) and profile.streamUri <> "" then
-        StartVideo(cam, profile)
+    if m.forceSnapshots then
+        StartSnapshots("snapshots")
+    else if not BridgeConfigured(m.top.settings) then
+        NoVideo("Live video needs the video bridge. Press Back, then * and Settings, and enter the bridge's IP address.", "snapshots (set up the video bridge in Settings for live video)")
+    else if IsHevc(profile) and not m.canHevc then
+        NoVideo("This TV can't decode H.265 video. Set the camera's main stream to H.264.", "snapshots - this TV can't decode H.265; set the camera's main stream to H.264")
+    else if profile.streamUri = "" then
+        NoVideo("The camera didn't report a video stream address.", "snapshots")
     else
-        note = "snapshots"
-        if not m.forceSnapshots and not BridgeConfigured(m.top.settings) then note = "snapshots (set up the video bridge in Settings for live video)"
-        StartSnapshots(note)
+        StartVideo(cam, profile)
     end if
+end sub
+
+' Live video isn't possible for this camera: show snapshots where they're
+' allowed, otherwise say why.
+sub NoVideo(message as String, snapshotNote as String)
+    if m.top.allowSnapshots then
+        StartSnapshots(snapshotNote)
+        return
+    end if
+    m.mode = ""
+    m.detail.text = ProfileLabel(CameraProfile(CurrentCamera()))
+    ShowMessage(message)
 end sub
 
 ' ---------------------------------------------------------------- video
 
 sub StartVideo(cam as Object, profile as Object)
     m.mode = "video"
-    ' Show snapshots while the bridge connects so the screen is never blank.
+    ' Where snapshots are allowed, show them while the bridge connects.
     SetSnapshotJob(SnapshotUrlFor(cam, profile), 1000)
     SetSpinner(true)
     m.detail.text = ProfileLabel(profile) + "   connecting to live video..."
@@ -153,6 +191,7 @@ sub OnVideoState()
         m.message.text = ""
         SetSnapshotJob("", 0)
         m.videoRetries = 0
+        m.retryDelay = 5
         m.detail.text = ProfileLabel(CameraProfile(CurrentCamera())) + "   live video"
     else if state = "buffering" then
         SetSpinner(true)
@@ -180,7 +219,20 @@ end function
 sub RestartVideoSoon()
     m.video.control = "stop"
     SetSpinner(true)
+    m.retryTimer.duration = 3
     m.retryTimer.control = "start"
+end sub
+
+' Live video only: say what went wrong and start over after a pause that
+' grows while it keeps failing.
+sub RetryVideo(reason as String)
+    StopVideo()
+    CancelBridgeRequest()
+    m.mode = "video"
+    ShowMessage(reason + Chr(10) + "Trying again...")
+    m.retryTimer.duration = m.retryDelay
+    m.retryTimer.control = "start"
+    m.retryDelay = MinInt(m.retryDelay * 2, 30)
 end sub
 
 sub OnRetry()
@@ -194,7 +246,7 @@ sub OnRetry()
 end sub
 
 sub OnStartTimeout()
-    if m.mode = "video" and m.video.state <> "playing" then FallBackToSnapshots("live video didn't start (check the bridge log)")
+    if m.mode = "video" and m.video.state <> "playing" then FallBackToSnapshots("Live video didn't start (check the bridge log)")
 end sub
 
 sub StopVideo()
@@ -215,6 +267,10 @@ sub CancelBridgeRequest()
 end sub
 
 sub FallBackToSnapshots(reason as String)
+    if not m.top.allowSnapshots then
+        RetryVideo(reason)
+        return
+    end if
     StopVideo()
     StartSnapshots("snapshots - " + reason)
     ShowOverlay()
@@ -349,8 +405,10 @@ function onKeyEvent(key as String, press as Boolean) as Boolean
     else if key = "down" then
         ChangeProfile(1)
     else if key = "options" then
-        m.forceSnapshots = not m.forceSnapshots
-        ShowCamera()
+        if m.top.allowSnapshots then
+            m.forceSnapshots = not m.forceSnapshots
+            ShowCamera()
+        end if
     else if key = "replay" then
         ShowCamera()
     else if key = "OK" then

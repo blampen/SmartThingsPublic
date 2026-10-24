@@ -25,7 +25,9 @@ sub BuildList()
     s = m.settings
     password = "no password"
     if s.pass <> "" then password = "password set"
+    fixed = LoadPresets() <> invalid
     bridge = "not set (snapshots only)"
+    if fixed then bridge = "not set - needed for live video"
     if BridgeConfigured(s) then bridge = s.bridgeHost
     mode = "snapshots"
     if s.preferVideo then mode = "live video"
@@ -39,11 +41,11 @@ sub BuildList()
         { id: "refresh", text: "Thumbnail refresh:  every " + AsInt(s.refreshSec).ToStr() + " s", help: "How often the camera grid fetches a new picture from each camera." }
         { id: "clear", text: "Remove all cameras", help: "Forgets every camera. Search again from the home screen to find them." }
     ]
-    if LoadPresets() <> invalid then
+    if fixed then
         ' Cameras and their logins come from presets.json in the package.
         fixedItems = []
         for each item in m.items
-            if item.id <> "login" and item.id <> "clear" then fixedItems.Push(item)
+            if item.id = "bridge" or item.id = "ports" or item.id = "test" then fixedItems.Push(item)
         end for
         m.items = fixedItems
     end if

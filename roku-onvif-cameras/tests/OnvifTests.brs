@@ -237,6 +237,14 @@ sub TestProbeAgainstFakeCamera(address as String, skew as Integer, rtspPort as S
         Check("profile index clamped", CameraProfile(cam).token, "Profile_1")
     end if
 
+    ' Video only: stream addresses without asking for snapshots.
+    videoOnly = OnvifProbeCamera({ xaddr: deviceUrl, user: "admin", pass: "secret", wantSnapshots: false })
+    Check("video-only probe ok", videoOnly.ok, true)
+    if videoOnly.ok and videoOnly.info.profiles.Count() = 3 then
+        Check("video-only stream uri", videoOnly.info.profiles[0].streamUri, "rtsp://" + host + ":" + rtspPort + "/fakecam?profile=Profile_1&x=1")
+        Check("video-only no snapshot uri", StrOrEmpty(videoOnly.info.profiles[0].snapshotUri), "")
+    end if
+
     bad = OnvifProbeCamera({ xaddr: deviceUrl, user: "admin", pass: "wrong" })
     Check("wrong password fails", bad.ok, false)
     Check("wrong password is auth failure", bad.authFailed, true)
@@ -261,6 +269,8 @@ sub TestVendorSnapshotFallback(address as String)
     frames = PollSnapshots([{ key: "vendor", url: expected, user: "admin", pass: "secret", intervalMs: 200 }], 1, 8000)
     vendor = frames["vendor"]
     Check("vendor snapshot fetched", vendor.Count() > 0 and vendor[0].ok and vendor[0].jpeg, true)
+    videoOnly = OnvifProbeCamera({ xaddr: deviceUrl, user: "admin", pass: "secret", wantSnapshots: false })
+    Check("video-only skips snapshot search", videoOnly.ok and CameraThumbnailUri({ profiles: videoOnly.info.profiles }) = "", true)
     ' A rejected login ends the search instead of trying every address.
     Check("search stops on wrong login", OnvifFindSnapshotUrl(deviceUrl, "admin", "wrong"), "")
 end sub
