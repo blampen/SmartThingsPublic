@@ -3,10 +3,13 @@
     <script type="text/brightscript" uri="MainScene.brs" />
     <script type="text/brightscript" uri="pkg:/source/Util.brs" />
     <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
     <script type="text/brightscript" uri="pkg:/components/Dialogs.brs" />
     <children>
         <Rectangle width="1920" height="1080" color="0x0F1318FF" />
         <CameraGrid id="grid" />
+        <LiveWall id="wall" visible="false" />
         <SettingsScreen id="settingsScreen" visible="false" />
         <CameraViewer id="viewer" visible="false" />
         <Group id="toast" visible="false">

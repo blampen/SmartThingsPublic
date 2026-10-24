@@ -22,7 +22,9 @@ sub init()
     m.clockTimer.ObserveFieldScoped("fire", "UpdateClock")
     m.retryTimer.ObserveFieldScoped("fire", "OnRetry")
     m.startTimer.ObserveFieldScoped("fire", "OnStartTimeout")
-    m.clock12 = CreateObject("roDeviceInfo").GetClockFormat() = "12h"
+    device = CreateObject("roDeviceInfo")
+    m.clock12 = device.GetClockFormat() = "12h"
+    m.canHevc = AsBool(device.CanDecodeVideo({ Codec: "hevc" }).result)
 
     m.cameras = []
     m.snapTask = invalid
@@ -88,7 +90,9 @@ sub ShowCamera()
         return
     end if
 
-    if not m.forceSnapshots and BridgeConfigured(m.top.settings) and profile.streamUri <> "" then
+    if IsHevc(profile) and not m.canHevc and not m.forceSnapshots then
+        StartSnapshots("snapshots - this TV can't decode H.265; set the camera's main stream to H.264")
+    else if not m.forceSnapshots and BridgeConfigured(m.top.settings) and profile.streamUri <> "" then
         StartVideo(cam, profile)
     else
         note = "snapshots"
@@ -107,16 +111,14 @@ sub StartVideo(cam as Object, profile as Object)
     m.detail.text = ProfileLabel(profile) + "   connecting to live video..."
     m.startTimer.control = "start"
 
-    login = CameraLogin(cam, m.top.settings)
-    rtspUrl = profile.streamUri
-    if login.user <> "" then rtspUrl = UrlWithCredentials(rtspUrl, login.user, login.pass)
-
+    ' The bridge's full<N> path plays camera N's cam<N>_main stream.
+    slot = m.top.index + 1
     m.bridgeTask = CreateObject("roSGNode", "BridgeTask")
     m.bridgeTask.request = {
         action: "register"
         settings: m.top.settings
-        pathName: BridgePathName(cam.id, profile.token)
-        rtspUrl: rtspUrl
+        paths: [{ name: BridgeCameraPath(slot, "main"), url: CameraRtspUrl(cam, profile, m.top.settings) }]
+        hlsUrl: BridgeFullUrl(m.top.settings, slot)
     }
     m.bridgeTask.ObserveFieldScoped("response", "OnBridgeResponse")
     m.bridgeTask.control = "RUN"

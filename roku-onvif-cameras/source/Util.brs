@@ -25,6 +25,11 @@ function AsInt(value as Dynamic, fallback = 0 as Integer) as Integer
     return fallback
 end function
 
+function MinInt(a as Integer, b as Integer) as Integer
+    if a < b then return a
+    return b
+end function
+
 function PadTwo(value as Integer) as String
     if value < 10 then return "0" + value.ToStr()
     return value.ToStr()

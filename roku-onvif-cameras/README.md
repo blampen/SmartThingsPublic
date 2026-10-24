@@ -1,49 +1,55 @@
 # ONVIF Cameras for Roku
 
 A Roku channel for watching the IP cameras on your home network. It finds
-cameras with ONVIF, logs in to them, and shows a grid of live thumbnails.
-Open a camera to watch it full screen.
+cameras with ONVIF, logs in to them, and shows them all at once. Open a
+camera to watch it full screen.
 
-- **Discovery:** finds ONVIF cameras automatically (WS-Discovery), or you can
-  add one by IP address.
-- **Live grid:** each camera's picture refreshes every few seconds, with
-  online, offline and login status.
-- **Full screen:** live video through a small bridge on your network, or
-  fast-refreshing snapshots with no extra software. Switch cameras with
-  Left/Right and stream quality with Up/Down.
-- **Logins:** one default login for all cameras, or a separate login per
-  camera. The camera's clock is handled automatically.
+- **Camera wall:** four cameras fill the screen edge to edge as live video.
+  Move the highlight with the arrow keys to hear that camera; press OK to
+  watch it full screen and Back to return.
+- **Camera grid:** with discovery instead of a fixed list, a grid of live
+  thumbnails with online, offline and login status.
+- **Full screen:** the camera's own stream (H.264 or H.265) with sound.
+  Switch cameras with Left/Right and stream quality with Up/Down.
+- **Discovery and logins:** finds ONVIF cameras automatically
+  (WS-Discovery), or uses a fixed list built into the channel. The camera's
+  clock and ONVIF port are handled automatically.
 
 ## How it works
 
 ```
                ONVIF (SOAP over HTTP)
   Camera  <---------------------------->  Roku channel
-     |      discovery, login, profiles,       ^   ^
-     |      stream URIs, JPEG snapshots       |   | HLS video
-     |                                        |   |
-     |  RTSP          +----------------+      |   |
-     +--------------> |  Video bridge  | -----+---+
-                      |   (MediaMTX)   |  registers each camera
-                      +----------------+  through the bridge API
+     |      discovery, login, profiles,      ^   ^
+     |      stream URIs, JPEG snapshots      |   | HLS: "wall" (4-up) or
+     |                                       |   |      "full<N>" (one camera)
+     |  RTSP         +-----------------+     |   |
+     +-------------> |  Video bridge   | ----+---+
+                     | MediaMTX+ffmpeg |  registers each camera's
+                     +-----------------+  streams through the API
 ```
 
-Roku players can't play RTSP, which is what cameras stream, so the channel
-works in one of two ways:
+A Roku can't play RTSP, which is what cameras stream, and plays only one
+video at a time. Live video therefore goes through a bridge on your network:
+
+- **The wall:** the bridge tiles cameras 1-4 into one 1920×1080 picture with
+  no gaps. Each camera's sound becomes its own audio track; highlighting a
+  camera switches the TV to its track.
+- **Full screen:** the camera's stream is passed through without
+  re-encoding (H.265 stays H.265). Only the sound is converted to AAC, since
+  cameras usually send G.711, which the Roku can't play.
+
+Without a bridge the channel still works, with snapshots instead of video:
 
 | Mode | Needs | What you get |
 | --- | --- | --- |
-| **Snapshots** | nothing extra | The camera's JPEG snapshots, refreshed as fast as it serves them (typically 2-5 fps) |
-| **Live video** | [MediaMTX](https://github.com/bluenviron/mediamtx) on any always-on machine (PC, NAS, Raspberry Pi) | Full-motion H.264 video, about 2-5 s behind real time |
-
-The bridge needs no camera configuration. When you open a camera, the channel
-sends the camera's RTSP address to MediaMTX through its API. MediaMTX then
-pulls the camera only while someone is watching and repackages the stream as
-HLS, without re-encoding.
+| **Snapshots** | nothing extra | Each camera's JPEG snapshots, refreshed every 1-3 s (2-5 fps full screen); no sound |
+| **Live video** | the bridge on an always-on PC, NAS or mini PC | Full-motion video with sound, about 3-6 s behind real time |
 
 ## 1. Install the channel
 
-1. **Turn on developer mode on the Roku.** On the remote, press
+1. **Turn on developer mode on the Roku** (this works the same on a Roku TV
+   such as a Hisense). On the remote, press
    `Home ×3, Up ×2, Right, Left, Right, Left, Right`. Enable the installer,
    accept the license, and set a password. The Roku restarts.
 2. **Sideload the channel.** Pick one:
@@ -51,9 +57,7 @@ HLS, without re-encoding.
    - Run `make`, open `http://<roku ip>` in a browser, log in as `rokudev`,
      and upload `out/roku-onvif-cameras.zip`.
 
-The channel opens straight away and searches for cameras.
-
-## 2. Set up the video bridge (optional, for live video)
+## 2. Set up the video bridge (for live video and sound)
 
 On a machine on the same network as the cameras, with Docker installed:
 
@@ -62,11 +66,30 @@ cd bridge
 docker compose up -d
 ```
 
-Then in the channel, go to **Settings → Video bridge** and enter that
-machine's IP address. **Test video bridge** checks the connection.
+Then in the channel, open **Settings → Video bridge** and enter that
+machine's IP address. **Test video bridge** checks the connection. On the
+camera wall, Settings is in the `*` menu.
 
-To run without Docker, download MediaMTX for your platform and start it
-with this project's config: `./mediamtx bridge/mediamtx.yml`.
+The bridge uses the `bluenviron/mediamtx:1-ffmpeg` image with
+`bridge/mediamtx.yml` and the scripts in `bridge/scripts/`; you don't list
+cameras anywhere. The wall re-encodes four small streams into one 1080p
+picture, which takes roughly half to one core of a recent x86 CPU. Any
+current PC, NAS or mini PC is fine; a Raspberry Pi will likely struggle with the
+wall. Full screen only repackages, so it costs almost nothing.
+`docker-compose.yml` has the settings:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `WALL_STREAM` | `sub` | Build the wall from the cameras' sub streams (light) or `main` streams (sharper, needs a fast CPU) |
+| `WALL_FPS` | `15` | Wall frame rate |
+| `WALL_BITRATE` | `6M` | Wall video bitrate |
+
+The wall starts the first time the Roku asks for it, which takes about 10
+seconds. It keeps running for 2 minutes after you leave it, so coming back
+from full screen is quick. To keep it running all the time, add
+`MTX_PATHS_WALL_RUNONDEMANDCLOSEAFTER: 24h` to the environment. When a
+camera drops out, the wall rebuilds without it within about 20 seconds, and
+again when the camera comes back.
 
 The bridge listens on ports 9997 (API), 8888 (HLS) and 8554 (RTSP). Keep
 these on your LAN and never forward them from your router. The API accepts
@@ -81,17 +104,16 @@ camera passwords and is open to private-network addresses (see
   - Hikvision: *Network → Advanced → Integration Protocol*
   - Tapo: *Advanced Settings → Camera Account*
   - Reolink: enable ONVIF under the network/server settings
-- **Use the right port when adding by address.** The ONVIF port is often not
-  80: Reolink commonly uses `8000`, Tapo `2020`. Enter it as
-  `192.168.1.50:2020`.
-- **Video settings for the smoothest playback:** H.264, with the I-frame
-  (keyframe) interval equal to the frame rate. H.265 plays only on 4K Roku
-  models, and only if you change `hlsVariant` to `fmp4` in
-  `bridge/mediamtx.yml`.
-- **Audio** plays only if the camera sends AAC. G.711 audio is dropped and
-  the video plays silently.
+- **Turn on audio** for the stream (often a "Video & Audio" stream type),
+  on the main stream, the sub stream, or both. The wall takes sound from the
+  sub stream if it has it, otherwise from the main stream.
+- **Video settings:** H.264 or H.265. H.265 full screen needs a 4K Roku or
+  4K Roku TV; the channel checks and falls back to snapshots with a
+  message if the TV can't decode it. Set the I-frame (keyframe) interval
+  equal to the frame rate for the lowest delay. Give the sub stream at
+  least 640×360; it fills a quarter of the wall.
 
-## Hard-coded cameras (camera wall)
+## Hard-coded cameras (the camera wall)
 
 To build the camera list into the channel instead of discovering it, copy
 `presets.example.json` to `presets.json` and edit it. Only the addresses
@@ -112,29 +134,34 @@ are required.
 `make` packs `presets.json` into the zip. Git ignores it, so the passwords
 never reach the repository. With presets, the channel works differently:
 
-- Up to four cameras fill the screen as a 2×2 wall, with no search or add
-  tiles. `*` opens a camera's options, which include Settings.
+- The home screen is the camera wall: the first four cameras in the file,
+  in order (top left, top right, bottom left, bottom right). There are no
+  search or add tiles.
 - For a bare IP like `192.168.0.20`, the channel finds the ONVIF port itself
   (80, 8000, 2020, 8899, 8080 or 5000) and remembers it.
 - Logins come only from the file. A camera that rejects its login shows the
-  error on its tile; fix `presets.json` and reinstall.
+  error in its quarter; fix `presets.json` and reinstall.
 - `settings` sets defaults; changes made in the Settings screen still win.
 
 ## Using the channel
 
 | Screen | Key | Action |
 | --- | --- | --- |
+| Camera wall | Arrows | Highlight a camera and switch the sound to it |
+| Camera wall | OK | Watch the highlighted camera full screen |
+| Camera wall | `*` | Camera options: stream, reconnect, Settings |
 | Grid | OK | Open camera / enter a missing login / see why a camera is offline |
 | Grid | `*` | Camera options: stream, rename, login, address, reconnect, remove |
+| Full screen | Back | Return to the wall or grid |
 | Full screen | Left / Right | Previous / next camera |
 | Full screen | Up / Down | Higher / lower quality stream (camera profile) |
 | Full screen | `*` | Switch between live video and snapshots |
 | Full screen | OK | Show / hide the info bar |
 | Full screen | Replay | Reconnect |
 
-The **Settings** tile holds the default camera login, the bridge address and
-ports, whether cameras open in video or snapshot mode, and how often
-thumbnails refresh.
+On the wall, the highlight and the camera's name show for a few seconds
+after each key press, then fade, leaving only the feeds. A small speaker
+icon marks the camera you're hearing.
 
 ## Troubleshooting
 
@@ -144,18 +171,25 @@ thumbnails refresh.
 - **"Login needed" or "Login failed".** Check that you are using the camera's
   *ONVIF* user (see above). The channel corrects for clock differences
   between the Roku and the camera, so time settings aren't the cause.
-- **Live video never starts.** After 25 seconds the channel falls back to
-  snapshots and shows the reason. To find the cause:
+- **The wall shows snapshots, not video.** The channel keeps retrying the
+  bridge. To find the cause:
   - Check the bridge log: `docker logs roku-camera-bridge`.
-  - Try the re-stream in VLC: `rtsp://<bridge ip>:8554/<path>`. The path is
-    shown in the log, as `roku_...`.
-  - Check the codec. H.265 needs the `fmp4` change above.
-- **No thumbnail, but video works.** Some cameras don't implement ONVIF
-  snapshots. Use the bridge for those.
+  - Open the wall in VLC: `http://<bridge ip>:8888/wall/index.m3u8`, or a
+    single camera at `rtsp://<bridge ip>:8554/cam1_main`.
+- **A quarter of the wall is black.** That camera isn't reachable or
+  rejected its login (its quarter shows why when the video stops). The wall
+  rebuilds when the camera comes back.
+- **No sound.** Turn on audio in the camera's stream settings (see above).
+  Sound needs the bridge.
+- **Full screen falls back to snapshots.** Look at the info bar (press OK):
+  it says why, for example an H.265 stream on a TV that can't decode H.265.
 
 ## Limitations
 
-- Live video needs the bridge; Roku has no RTSP player.
+- Live video and sound need the bridge; Roku has no RTSP player and plays
+  one video at a time.
+- Switching the sound on the wall switches audio tracks in the player,
+  which can take a moment.
 - Uses the ONVIF Media (ver10) service, which Profile S cameras (nearly all of
   them) implement. PTZ, two-way audio, events and recordings are not
   supported.
@@ -169,15 +203,17 @@ source/                 main.brs plus libraries shared with components:
   Onvif.brs             SOAP, WS-Security digest, discovery parsing, probe flow
   Http.brs              blocking HTTP for Task threads
   Snapshots.brs         non-blocking snapshot poller
-  Bridge.brs            MediaMTX path registration
-  Store.brs, Util.brs   registry, URL and XML helpers
+  Bridge.brs            MediaMTX path registration, wall audio tracks
+  Store.brs, Util.brs   registry, presets, stream choice, URL and XML helpers
 components/
   MainScene             camera list, discovery, probing, navigation
-  grid/                 home grid and tiles
+  wall/                 four-feed camera wall (fixed cameras)
+  grid/                 camera grid and tiles (discovered cameras)
   viewer/               full screen video / snapshot viewer
   settings/             settings screen
   tasks/                Discovery, Onvif, Snapshot and Bridge Task nodes
-bridge/                 MediaMTX config + docker-compose
+bridge/                 MediaMTX config, docker-compose, scripts/ for the
+                        wall and full screen streams
 tests/                  fake ONVIF camera and off-device tests
 ```
 
@@ -185,7 +221,8 @@ tests/                  fake ONVIF camera and off-device tests
 npm install
 npm run lint   # BrighterScript compiler + bslint
 npm test       # BrightScript tests in brs-node against the fake camera,
-               # plus bridge tests if `mediamtx` and `ffmpeg` are installed
+               # plus bridge tests (wall and full screen) if `mediamtx`
+               # and `ffmpeg` (with libx265) are installed
 ```
 
 `tests/fake_onvif_camera.py` is a simulated ONVIF camera. It supports

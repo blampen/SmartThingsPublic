@@ -1,11 +1,13 @@
 ' Owns the camera list: discovery, probing, thumbnails, and moving between
-' the grid, the full screen viewer and settings.
+' the home screen, the full screen viewer and settings. The home screen is
+' the camera grid, or with presets.json the four-feed LiveWall.
 '
 ' Loops over m.cameras use indexes: a "for each" shares the array's single
 ' iterator, so a helper that also walks m.cameras would end the outer loop.
 
 sub init()
     m.grid = m.top.FindNode("grid")
+    m.wall = m.top.FindNode("wall")
     m.viewer = m.top.FindNode("viewer")
     m.settingsScreen = m.top.FindNode("settingsScreen")
     m.toast = m.top.FindNode("toast")
@@ -18,7 +20,6 @@ sub init()
     m.fixed = presets <> invalid
     if m.fixed then
         m.cameras = ApplySavedCameraState(presets.cameras, LoadCameras())
-        m.grid.layout = "wall"
     else
         m.cameras = LoadCameras()
     end if
@@ -30,6 +31,8 @@ sub init()
 
     m.grid.ObserveFieldScoped("itemSelected", "OnGridSelected")
     m.grid.ObserveFieldScoped("optionsPressed", "OnGridOptions")
+    m.wall.ObserveFieldScoped("selected", "OnWallSelected")
+    m.wall.ObserveFieldScoped("optionsPressed", "OnWallOptions")
     m.viewer.ObserveFieldScoped("closed", "OnViewerClosed")
     m.viewer.ObserveFieldScoped("profileChanged", "OnProfileChanged")
     m.settingsScreen.ObserveFieldScoped("closed", "OnSettingsClosed")
@@ -41,13 +44,22 @@ sub init()
     m.snapTask.ObserveFieldScoped("frame", "OnGridFrame")
     m.snapTask.control = "RUN"
 
-    BuildGrid(0)
-    m.grid.SetFocus(true)
+    if m.fixed then
+        m.grid.visible = false
+        m.wall.visible = true
+        m.wall.settings = m.settings
+        m.wall.cameras = m.cameras
+        m.wall.active = true
+        m.wall.SetFocus(true)
+    else
+        BuildGrid(0)
+        m.grid.SetFocus(true)
+    end if
     m.top.SignalBeacon("AppLaunchComplete")
 
     if m.fixed then
         ProbeCameras(false)
-        ShowToast("OK  full screen          *  options and settings")
+        ShowToast("Arrows  pick camera and sound          OK  full screen          *  options")
     else if m.cameras.Count() = 0 then
         StartDiscovery()
     else
@@ -65,15 +77,12 @@ sub BuildGrid(focusIndex as Integer)
         item = content.CreateChild("CameraItem")
         item.kind = "camera"
         item.camId = cam.id
-        if m.fixed then item.layout = "wall"
         m.items[cam.id] = item
         UpdateItem(cam)
     end for
-    if not m.fixed then
-        AddAction(content, "scan", "Search for cameras", "pkg:/images/tile_scan.png")
-        AddAction(content, "add", "Add camera by address", "pkg:/images/tile_add.png")
-        AddAction(content, "settings", "Settings", "pkg:/images/tile_settings.png")
-    end if
+    AddAction(content, "scan", "Search for cameras", "pkg:/images/tile_scan.png")
+    AddAction(content, "add", "Add camera by address", "pkg:/images/tile_add.png")
+    AddAction(content, "settings", "Settings", "pkg:/images/tile_settings.png")
     m.grid.content = content
     if focusIndex > 0 and focusIndex < content.GetChildCount() then m.grid.jumpToItem = focusIndex
     UpdateGridStatus()
@@ -96,16 +105,14 @@ sub UpdateItem(cam as Object)
         profile = CameraProfile(cam)
         item.statusText = "Online"
         if profile <> invalid and profile.width > 0 then item.statusText = profile.width.ToStr() + "x" + profile.height.ToStr()
-        if CameraThumbnailUri(cam, ThumbnailWidth()) = "" then
+        if CameraThumbnailUri(cam, 552) = "" then
             item.snapshotError = "No snapshots from this camera - press OK for live video"
         else if item.snapshotError.InStr("No snapshots") = 0 then
             item.snapshotError = ""
         end if
     else if cam.status = "login" then
         item.statusText = "Login needed"
-        ' Fixed cameras can't be given a new login from the TV.
         item.snapshotError = ""
-        if m.fixed then item.snapshotError = cam.error
     else if cam.status = "offline" then
         item.statusText = "Offline"
         item.snapshotError = cam.error
@@ -126,14 +133,15 @@ sub UpdateGridStatus()
     m.grid.statusText = text
 end sub
 
-' Thumbnails refresh only while the grid is on screen.
+' Grid thumbnails refresh only while the grid is on screen (the LiveWall
+' fetches its own).
 sub UpdateSnapshotJobs()
     jobs = []
-    if m.screen = "grid" then
+    if m.screen = "grid" and not m.fixed then
         interval = AsInt(m.settings.refreshSec, 3) * 1000
         for i = 0 to m.cameras.Count() - 1
             cam = m.cameras[i]
-            url = CameraThumbnailUri(cam, ThumbnailWidth())
+            url = CameraThumbnailUri(cam, 552)
             if cam.status = "online" and url <> "" then
                 login = CameraLogin(cam, m.settings)
                 jobs.Push({ key: cam.id, url: url, user: login.user, pass: login.pass, intervalMs: interval })
@@ -142,11 +150,6 @@ sub UpdateSnapshotJobs()
     end if
     m.snapTask.jobs = jobs
 end sub
-
-function ThumbnailWidth() as Integer
-    if m.fixed then return 924
-    return 552
-end function
 
 sub OnGridFrame(event as Object)
     frame = event.GetData()
@@ -171,18 +174,27 @@ sub OnGridSelected()
         OpenSettings()
     else
         cam = FindCamera(item.camId)
-        if cam = invalid then return
-        if cam.status = "online" then
-            OpenViewer(cam)
-        else if m.fixed and (cam.status = "login" or cam.status = "offline") then
-            ShowMessageDialog(CameraTitle(cam), [cam.error, cam.xaddr], ["Try again", "Cancel"], "offline", { id: cam.id, actions: ["reconnect"] })
-        else if cam.status = "login" then
-            StartLogin(cam)
-        else if cam.status = "offline" then
-            ShowMessageDialog(CameraTitle(cam), [cam.error, cam.xaddr], ["Try again", "Camera login", "Change address", "Remove camera", "Cancel"], "offline", { id: cam.id, actions: ["reconnect", "login", "address", "remove"] })
-        else
-            ShowToast("Still connecting to " + CameraTitle(cam) + "...")
-        end if
+        if cam <> invalid then SelectCamera(cam)
+    end if
+end sub
+
+sub OnWallSelected()
+    index = m.wall.selected
+    if index >= 0 and index < m.cameras.Count() then SelectCamera(m.cameras[index])
+end sub
+
+sub SelectCamera(cam as Object)
+    if cam.status = "online" then
+        OpenViewer(cam)
+    else if m.fixed and (cam.status = "login" or cam.status = "offline") then
+        ' Fixed cameras' logins and addresses come from presets.json.
+        ShowMessageDialog(CameraTitle(cam), [cam.error, cam.xaddr], ["Try again", "Cancel"], "offline", { id: cam.id, actions: ["reconnect"] })
+    else if cam.status = "login" then
+        StartLogin(cam)
+    else if cam.status = "offline" then
+        ShowMessageDialog(CameraTitle(cam), [cam.error, cam.xaddr], ["Try again", "Camera login", "Change address", "Remove camera", "Cancel"], "offline", { id: cam.id, actions: ["reconnect", "login", "address", "remove"] })
+    else
+        ShowToast("Still connecting to " + CameraTitle(cam) + "...")
     end if
 end sub
 
@@ -190,8 +202,15 @@ sub OnGridOptions()
     item = m.grid.content.GetChild(m.grid.optionsPressed)
     if item = invalid or item.kind <> "camera" then return
     cam = FindCamera(item.camId)
-    if cam = invalid then return
+    if cam <> invalid then ShowCameraMenu(cam)
+end sub
 
+sub OnWallOptions()
+    index = m.wall.optionsPressed
+    if index >= 0 and index < m.cameras.Count() then ShowCameraMenu(m.cameras[index])
+end sub
+
+sub ShowCameraMenu(cam as Object)
     buttons = []
     actions = []
     if cam.status = "online" then
@@ -266,6 +285,7 @@ sub ProbeCamera(cam as Object)
     cam.error = ""
     UpdateItem(cam)
     UpdateGridStatus()
+    CamerasChanged()
 
     login = CameraLogin(cam, m.settings)
     task = CreateObject("roSGNode", "OnvifTask")
@@ -307,6 +327,12 @@ sub OnProbeResult(event as Object)
     UpdateItem(cam)
     UpdateGridStatus()
     UpdateSnapshotJobs()
+    CamerasChanged()
+end sub
+
+' The LiveWall works on a copy of the list; hand it the latest.
+sub CamerasChanged()
+    if m.fixed then m.wall.cameras = m.cameras
 end sub
 
 sub AddCamera(src as Object)
@@ -511,8 +537,33 @@ end sub
 function DialogFocusTarget() as Object
     if m.screen = "viewer" then return m.viewer
     if m.screen = "settings" then return m.settingsScreen
+    return HomeScreen()
+end function
+
+function HomeScreen() as Object
+    if m.fixed then return m.wall
     return m.grid
 end function
+
+' Shows the home screen again. The Roku plays one video at a time, so the
+' LiveWall only runs while it's on screen.
+sub ShowHome()
+    m.screen = "grid"
+    if m.fixed then
+        m.wall.settings = m.settings
+        m.wall.visible = true
+        m.wall.active = true
+    else
+        m.grid.visible = true
+    end if
+    HomeScreen().SetFocus(true)
+    UpdateSnapshotJobs()
+end sub
+
+sub HideHome()
+    if m.fixed then m.wall.active = false
+    HomeScreen().visible = false
+end sub
 
 ' ---------------------------------------------------------------- screens
 
@@ -522,7 +573,7 @@ sub OpenViewer(cam as Object)
     m.viewer.settings = m.settings
     m.viewer.cameras = m.cameras
     m.viewer.index = CameraIndex(cam.id)
-    m.grid.visible = false
+    HideHome()
     m.viewer.visible = true
     m.viewer.active = true
     m.viewer.SetFocus(true)
@@ -531,11 +582,14 @@ end sub
 sub OnViewerClosed()
     m.viewer.active = false
     m.viewer.visible = false
-    m.screen = "grid"
-    m.grid.visible = true
-    m.grid.jumpToItem = m.viewer.index
-    m.grid.SetFocus(true)
-    UpdateSnapshotJobs()
+    ' Come back to the camera that was on screen.
+    index = m.viewer.index
+    if m.fixed then
+        if index < 4 then m.wall.focusIndex = index
+    else
+        m.grid.jumpToItem = index
+    end if
+    ShowHome()
 end sub
 
 sub OnProfileChanged(event as Object)
@@ -545,22 +599,20 @@ sub OnProfileChanged(event as Object)
     cam.profile = change.profile
     SaveCameras(m.cameras)
     UpdateItem(cam)
+    CamerasChanged()
 end sub
 
 sub OpenSettings()
     m.screen = "settings"
     UpdateSnapshotJobs()
-    m.grid.visible = false
+    HideHome()
     m.settingsScreen.visible = true
     m.settingsScreen.SetFocus(true)
 end sub
 
 sub OnSettingsClosed()
     m.settingsScreen.visible = false
-    m.screen = "grid"
-    m.grid.visible = true
-    m.grid.SetFocus(true)
-    UpdateSnapshotJobs()
+    ShowHome()
 end sub
 
 sub OnSettingsChanged()

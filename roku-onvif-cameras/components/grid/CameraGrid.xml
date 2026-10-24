@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Home screen: a grid of live camera thumbnails followed by action tiles,
-     or (layout = "wall") a full screen 2 x 2 wall of fixed cameras. -->
+<!-- Home screen: a grid of live camera thumbnails followed by action tiles. -->
 <component name="CameraGrid" extends="Group">
     <interface>
         <field id="content" type="node" alias="grid.content" />
@@ -10,16 +9,12 @@
         <field id="statusText" type="string" alias="status.text" />
         <!-- Index of the focused tile when the Options (*) key is pressed. -->
         <field id="optionsPressed" type="integer" alwaysNotify="true" />
-        <!-- Set before content: grid | wall -->
-        <field id="layout" type="string" value="grid" onChange="OnLayout" />
     </interface>
     <script type="text/brightscript" uri="CameraGrid.brs" />
     <children>
-        <Group id="header">
-            <Label id="heading" text="Cameras" translation="[96,52]" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
-            <Label id="status" translation="[96,112]" width="1100" color="0x9AA7B4FF" font="font:SmallSystemFont" />
-            <Label id="hint" text="OK  open      *  camera options" translation="[1124,66]" width="700" horizAlign="right" color="0x9AA7B4FF" font="font:SmallSystemFont" />
-        </Group>
+        <Label id="heading" text="Cameras" translation="[96,52]" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
+        <Label id="status" translation="[96,112]" width="1100" color="0x9AA7B4FF" font="font:SmallSystemFont" />
+        <Label id="hint" text="OK  open      *  camera options" translation="[1124,66]" width="700" horizAlign="right" color="0x9AA7B4FF" font="font:SmallSystemFont" />
         <MarkupGrid
             id="grid"
             translation="[96,172]"

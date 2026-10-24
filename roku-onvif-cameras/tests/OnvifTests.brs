@@ -12,6 +12,7 @@ sub Main(args as Dynamic)
     TestDiscoveryParsing()
     TestProfileSort()
     TestPresets()
+    TestWallHelpers()
 
     camera = StrOrEmpty(args.camera)
     if camera <> "" then
@@ -130,6 +131,30 @@ sub TestProfileSort()
         order.Push(p.token)
     end for
     Check("profile order", order.Join(","), "main,third,sub,jpeg")
+end sub
+
+sub TestWallHelpers()
+    tracks = [{ Name: "audio3", Track: "t3" }, { Name: "audio2", Track: "t2" }, { Name: "audio5", Track: "t5" }, { Name: "audio4", Track: "t4" }]
+    Check("camera 1 sound", WallAudioTrack(tracks, 0), "t2")
+    Check("camera 4 sound", WallAudioTrack(tracks, 3), "t5")
+    Check("no such camera", WallAudioTrack(tracks, 4), "")
+    Check("unnamed tracks in list order", WallAudioTrack([{ Track: "a" }, { Track: "b" }], 1), "b")
+    Check("MinInt", MinInt(7, 4), 4)
+
+    profiles = [
+        { width: 2560, streamUri: "rtsp://10.0.0.5/main", snapshotUri: "" }
+        { width: 1280, streamUri: "rtsp://10.0.0.5/third", snapshotUri: "" }
+        { width: 640, streamUri: "rtsp://10.0.0.5/sub", snapshotUri: "" }
+    ]
+    cam = { status: "online", profiles: profiles, profile: 0, ownLogin: true, user: "admin", pass: "p!" }
+    paths = CameraBridgePaths(cam, 3, DefaultSettings())
+    Check("main path", paths[0].name, "cam3_main")
+    Check("main url has login", paths[0].url, "rtsp://admin:p%21@10.0.0.5/main")
+    Check("wall uses sub stream", paths[1].url, "rtsp://admin:p%21@10.0.0.5/sub")
+    cam.status = "offline"
+    Check("offline camera removed", CameraBridgePaths(cam, 3, DefaultSettings())[0].url, "")
+    Check("hevc detected", IsHevc({ encoding: "H265" }), true)
+    Check("h264 not hevc", IsHevc({ encoding: "H264" }), false)
 end sub
 
 sub TestPresets()
@@ -311,27 +336,44 @@ sub TestBridge(cameraAddress as String, bridgeHost as String)
         Check("bridge test probe", probe.error, "")
         return
     end if
-    profile = probe.info.profiles[0]
-    pathName = BridgePathName("urn:uuid:test-camera", profile.token)
-    Check("path name", pathName, "roku_urn_uuid_test-camera_Profile_1")
-
-    reg = BridgeRegister(settings, pathName, UrlWithCredentials(profile.streamUri, "admin", "secret"))
+    ' Camera 1 is the fake camera; 2-4 stay unregistered (shown black).
+    cam = { status: "online", profiles: probe.info.profiles, profile: 0, ownLogin: true, user: "admin", pass: "secret" }
+    paths = CameraBridgePaths(cam, 1, settings)
+    paths.Append(CameraBridgePaths({ status: "offline" }, 2, settings))
+    reg = BridgeRegisterAll(settings, paths)
     Check("bridge register", reg.ok, true)
-    Check("hls url", reg.hlsUrl, "http://" + bridgeHost + ":8888/" + pathName + "/index.m3u8")
-    again = BridgeRegister(settings, pathName, UrlWithCredentials(profile.streamUri, "admin", "secret"))
-    Check("bridge re-register", again.ok, true)
+    Check("bridge re-register", BridgeRegisterAll(settings, paths).ok, true)
+    Check("hls url", BridgeFullUrl(settings, 1), "http://" + bridgeHost + ":8888/full1/index.m3u8")
 
-    ' The first playlist request starts the RTSP pull; it can take a moment.
-    playlist = HttpRequest({ url: reg.hlsUrl, timeoutMs: 20000 })
-    Check("hls playlist served", playlist.code, 200)
-    Check("hls playlist content", playlist.body.InStr("#EXTM3U") >= 0, true)
+    ' Full screen: video passed through (H.265 here), audio as AAC.
+    ' The first request starts the bridge's ffmpeg; it can take a moment.
+    full = HttpRequest({ url: BridgeFullUrl(settings, 1), timeoutMs: 30000 })
+    Check("full screen playlist served", full.code, 200)
+    Check("full screen keeps H.265", full.body.InStr("hvc1") >= 0, true)
+    Check("full screen audio is AAC", full.body.InStr("mp4a") >= 0, true)
+
+    ' The wall: one 1920x1080 picture, an audio track per camera.
+    wall = HttpRequest({ url: BridgeWallUrl(settings), timeoutMs: 45000 })
+    Check("wall playlist served", wall.code, 200)
+    Check("wall is one 1080p picture", wall.body.InStr("RESOLUTION=1920x1080") >= 0, true)
+    Check("wall has 4 audio tracks", CountOf(wall.body, "TYPE=AUDIO"), 4)
 
     badSettings = DefaultSettings()
     badSettings.bridgeHost = "127.0.0.1"
     badSettings.bridgeApiPort = 9
-    unreachable = BridgeRegister(badSettings, pathName, "rtsp://x/y")
+    unreachable = BridgeRegister(badSettings, "cam1_main", "rtsp://x/y")
     Check("unreachable bridge fails", unreachable.ok, false)
 end sub
+
+function CountOf(text as String, part as String) as Integer
+    count = 0
+    start = text.InStr(part)
+    while start >= 0
+        count = count + 1
+        start = text.InStr(start + 1, part)
+    end while
+    return count
+end function
 
 ' ---------------------------------------------------------------- harness
 

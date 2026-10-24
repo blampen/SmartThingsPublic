@@ -4,12 +4,19 @@
 # Settings.
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1
+    image: bluenviron/mediamtx:1-ffmpeg
     container_name: roku-camera-bridge
     restart: unless-stopped
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
+      - ./scripts:/bridge:ro
+    environment:
+      # Which camera stream the 4-up wall is built from: "sub" (light on
+      # the bridge's CPU) or "main" (sharper, needs a fast CPU).
+      WALL_STREAM: sub
+      WALL_FPS: "15"
+      WALL_BITRATE: 6M
     ports:
       - "9997:9997" # control API (the channel registers cameras here)
       - "8888:8888" # HLS (what the Roku plays)
-      - "8554:8554" # RTSP re-stream (optional, for checking with VLC)
+      - "8554:8554" # RTSP (optional, for checking streams with VLC)

@@ -165,23 +165,58 @@ function CameraProfile(cam as Object) as Object
     return profiles[index]
 end function
 
-' Thumbnails come from the smallest profile at least minWidth wide (or the
-' largest there is): enough detail for the tile, far less to download and
-' decode than the main stream.
-function CameraThumbnailUri(cam as Object, minWidth = 0 as Integer) as String
+' The smallest profile at least minWidth wide that has a non-empty `field`
+' (snapshotUri or streamUri), or failing that the largest one that has it:
+' enough detail for where it's shown, far less to download and decode.
+function CameraProfileForWidth(cam as Object, minWidth as Integer, field as String) as Dynamic
     profiles = cam.profiles
-    if profiles = invalid then return ""
+    if profiles = invalid then return invalid
     best = invalid
     largest = invalid
     for each p in profiles
-        if StrOrEmpty(p.snapshotUri) <> "" then
+        if StrOrEmpty(p[field]) <> "" then
             if p.width >= minWidth and (best = invalid or p.width < best.width) then best = p
             if largest = invalid or p.width > largest.width then largest = p
         end if
     end for
-    if best <> invalid then return best.snapshotUri
-    if largest <> invalid then return largest.snapshotUri
-    return ""
+    if best <> invalid then return best
+    return largest
+end function
+
+function CameraThumbnailUri(cam as Object, minWidth = 0 as Integer) as String
+    profile = CameraProfileForWidth(cam, minWidth, "snapshotUri")
+    if profile = invalid then return ""
+    return profile.snapshotUri
+end function
+
+' The profile's RTSP URL with the camera's login filled in.
+function CameraRtspUrl(cam as Object, profile as Dynamic, settings as Object) as String
+    if profile = invalid or StrOrEmpty(profile.streamUri) = "" then return ""
+    login = CameraLogin(cam, settings)
+    if login.user = "" then return profile.streamUri
+    return UrlWithCredentials(profile.streamUri, login.user, login.pass)
+end function
+
+' Bridge registrations for the camera in position slot: main is the stream
+' picked for full screen, sub the smallest one at least 640 wide (a quarter
+' of the wall). A camera that isn't working gets empty URLs, which removes
+' its paths so the wall shows it black.
+function CameraBridgePaths(cam as Object, slot as Integer, settings as Object) as Object
+    mainUrl = ""
+    wallUrl = ""
+    if cam.status = "online" then
+        mainUrl = CameraRtspUrl(cam, CameraProfile(cam), settings)
+        wallUrl = CameraRtspUrl(cam, CameraProfileForWidth(cam, 640, "streamUri"), settings)
+    end if
+    return [
+        { name: BridgeCameraPath(slot, "main"), url: mainUrl }
+        { name: BridgeCameraPath(slot, "sub"), url: wallUrl }
+    ]
+end function
+
+function IsHevc(profile as Dynamic) as Boolean
+    if profile = invalid then return false
+    return profile.encoding = "H265" or profile.encoding = "HEVC"
 end function
 
 function ProfileLabel(profile as Object) as String

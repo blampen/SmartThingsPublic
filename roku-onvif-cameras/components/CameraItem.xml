@@ -12,8 +12,5 @@
         <field id="snapshotUri" type="string" />
         <field id="snapshotError" type="string" />
         <field id="icon" type="string" />
-        <!-- grid (552 x 368, label below the picture) or wall (924 x 520,
-             label over the picture) -->
-        <field id="layout" type="string" value="grid" />
     </interface>
 </component>

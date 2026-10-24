@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home screen for a fixed camera list: four feeds edge to edge, no gaps.
+     Live video is the bridge's "wall" stream (one picture, one audio track
+     per camera); until it plays, or without a bridge, each quarter shows
+     its camera's snapshots. The D-pad highlights a camera and switches the
+     sound to it; OK reports `selected`, * reports `optionsPressed`. -->
+<component name="LiveWall" extends="Group">
+    <interface>
+        <field id="cameras" type="array" onChange="OnCameras" />
+        <field id="settings" type="assocarray" />
+        <!-- true starts the wall, false stops video and polling -->
+        <field id="active" type="boolean" onChange="OnActive" />
+        <field id="focusIndex" type="integer" value="0" />
+        <field id="selected" type="integer" alwaysNotify="true" />
+        <field id="optionsPressed" type="integer" alwaysNotify="true" />
+    </interface>
+    <script type="text/brightscript" uri="LiveWall.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
+    <children>
+        <Rectangle width="1920" height="1080" color="0x000000FF" />
+        <SnapshotPoster id="snap0" translation="[0,0]" width="960" height="540" />
+        <SnapshotPoster id="snap1" translation="[960,0]" width="960" height="540" />
+        <SnapshotPoster id="snap2" translation="[0,540]" width="960" height="540" />
+        <SnapshotPoster id="snap3" translation="[960,540]" width="960" height="540" />
+        <Label id="label0" translation="[40,0]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
+        <Label id="label1" translation="[1000,0]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
+        <Label id="label2" translation="[40,540]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
+        <Label id="label3" translation="[1000,540]" width="880" height="540" horizAlign="center" vertAlign="center" wrap="true" color="0x9AA7B4FF" font="font:MediumSystemFont" />
+        <Video id="video" width="1920" height="1080" visible="false" enableUI="false" />
+
+        <!-- Highlight: an outline inside the selected quarter and its name,
+             shown for a few seconds after each key press. -->
+        <Group id="highlight" visible="false">
+            <Rectangle id="edgeTop" width="960" height="6" color="0x3FA9F5FF" />
+            <Rectangle id="edgeBottom" translation="[0,534]" width="960" height="6" color="0x3FA9F5FF" />
+            <Rectangle id="edgeLeft" width="6" height="540" color="0x3FA9F5FF" />
+            <Rectangle id="edgeRight" translation="[954,0]" width="6" height="540" color="0x3FA9F5FF" />
+            <Rectangle id="tagBox" translation="[24,24]" height="56" color="0x000000B8" />
+            <Label id="tag" translation="[40,24]" height="56" vertAlign="center" color="0xFFFFFFFF" font="font:SmallBoldSystemFont" />
+        </Group>
+        <!-- Stays on the quarter whose sound is playing. -->
+        <Poster id="speaker" width="64" height="64" uri="pkg:/images/speaker.png" visible="false" />
+
+        <Timer id="hintTimer" duration="5" />
+        <Timer id="settleTimer" duration="20" />
+        <Timer id="startTimer" duration="45" />
+        <Timer id="retryTimer" duration="5" />
+    </children>
+</component>

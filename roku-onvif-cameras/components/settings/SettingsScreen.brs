@@ -32,7 +32,7 @@ sub BuildList()
 
     m.items = [
         { id: "login", text: "Default camera login:  " + s.user + "  (" + password + ")", help: "Used for every camera that doesn't have its own login. This is the camera's ONVIF user - on many cameras ONVIF users are set up separately from the web admin login." }
-        { id: "bridge", text: "Video bridge:  " + bridge, help: "Roku players can't play the RTSP streams cameras send, so live video goes through MediaMTX running on a computer, NAS or Raspberry Pi on your network. Enter its IP address. The project README has a one-command Docker setup." + Chr(10) + Chr(10) + "Without a bridge, cameras are shown as quickly refreshed snapshots." }
+        { id: "bridge", text: "Video bridge:  " + bridge, help: "Roku players can't play the RTSP streams cameras send, so live video and sound go through the bridge (MediaMTX) running on a computer or NAS on your network. Enter its IP address. The project README has a one-command Docker setup." + Chr(10) + Chr(10) + "Without a bridge, cameras are shown as quickly refreshed snapshots, without sound." }
         { id: "ports", text: "Bridge ports:  API " + AsInt(s.bridgeApiPort).ToStr() + ",  HLS " + AsInt(s.bridgeHlsPort).ToStr(), help: "Only change these if you changed apiAddress or hlsAddress in mediamtx.yml. Defaults: 9997 and 8888." }
         { id: "test", text: "Test video bridge", help: "Checks that this Roku can reach the bridge's API." }
         { id: "mode", text: "Open cameras in:  " + mode, help: "What full screen view starts with. Press * while watching to switch between live video and snapshots." }

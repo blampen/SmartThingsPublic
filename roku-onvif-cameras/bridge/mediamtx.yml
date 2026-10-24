@@ -1,31 +1,38 @@
-# MediaMTX settings for the Roku "ONVIF Cameras" channel.
+# MediaMTX settings for the Roku "ONVIF Cameras" channel. Runs in the
+# bluenviron/mediamtx:1-ffmpeg image (see docker-compose.yml), which has the
+# ffmpeg the scripts in scripts/ need.
 #
-# Roku players cannot play RTSP, which is what ONVIF cameras stream. This
-# server pulls each camera's RTSP stream and re-serves it as HLS, without
-# re-encoding. You do not list cameras here: the channel finds them over
-# ONVIF and registers each one through the API below when you open it.
+# Roku players cannot play RTSP, which is what ONVIF cameras stream, and can
+# play only one video at a time. This server pulls the cameras' RTSP streams
+# and serves the Roku:
+#   wall      all four cameras in one picture, each camera's sound a
+#             separate audio track (scripts/wall.sh)
+#   full<N>   camera N alone, video untouched, sound as AAC (scripts/full.sh)
+# You do not list cameras here: the channel finds them over ONVIF and
+# registers their streams as cam<N>_main / cam<N>_sub through the API.
 #
 # Full reference: https://github.com/bluenviron/mediamtx/blob/main/mediamtx.yml
 
 logLevel: info
 
-# Control API, used by the channel to add a path per camera (port 9997).
+# Control API, used by the channel to register camera streams (port 9997).
 api: true
 apiAddress: :9997
 
-# HLS output played by the Roku (port 8888). MPEG-TS segments, because the
-# Roku player does not support Low-Latency HLS. Segments are cut on camera
+# HLS output played by the Roku (port 8888). Fragmented MP4 segments: they
+# carry H.265 and multiple audio tracks, which MPEG-TS segments can't. The
+# Roku player doesn't support Low-Latency HLS. Segments are cut on
 # keyframes, so set each camera's I-frame interval to about 1 second (equal
 # to its frame rate) for the lowest delay.
 hls: true
 hlsAddress: :8888
-hlsVariant: mpegts
+hlsVariant: fmp4
 hlsSegmentCount: 7
 hlsSegmentDuration: 1s
 hlsAllowOrigins: ["*"]
 
-# RTSP re-stream (port 8554), handy for checking a path with VLC:
-#   vlc rtsp://<bridge-ip>:8554/<path name shown in the channel>
+# RTSP (port 8554): pulls from cameras, carries the scripts' output, and is
+# handy for checking a stream with VLC: vlc rtsp://<bridge-ip>:8554/full1
 rtsp: true
 rtspAddress: :8554
 rtmp: false
@@ -44,11 +51,33 @@ authInternalUsers:
       - action: api
       - action: read
       - action: playback
+  # Only the scripts running inside the bridge may publish.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
 
 pathDefaults:
   # TCP survives Docker networking and Wi-Fi far better than RTP over UDP.
   rtspTransport: tcp
-  # The channel registers cameras as on-demand: the camera is only pulled
-  # while somebody is watching.
-  sourceOnDemandStartTimeout: 15s
+  # Camera streams are pulled only while something is watching them. A LAN
+  # camera answers within a second or two; the wall waits this long for a
+  # camera that's down before showing it black.
+  sourceOnDemandStartTimeout: 10s
   sourceOnDemandCloseAfter: 30s
+
+paths:
+  wall:
+    runOnDemand: sh /bridge/wall.sh
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 30s
+    # Keep the wall running for a while after you open a camera full
+    # screen, so coming back to it is quick.
+    runOnDemandCloseAfter: 120s
+
+  "~^full(\\d+)$":
+    runOnDemand: sh /bridge/full.sh $G1
+    runOnDemandRestart: yes
+    runOnDemandStartTimeout: 20s
+    runOnDemandCloseAfter: 15s

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Runs the BrightScript tests off-device with brs-node against the fake ONVIF
 # camera. If `mediamtx` and `ffmpeg` are on PATH (or MEDIAMTX points at the
-# binary) the bridge tests run too, using bridge/mediamtx.yml unchanged.
+# binary) the bridge tests run too, using bridge/mediamtx.yml and the real
+# scripts in bridge/scripts.
 #
 #   npm install && npm test
 set -euo pipefail
@@ -64,12 +65,16 @@ EOF
     "$MEDIAMTX" "$WORK/camera-rtsp.yml" > "$WORK/camera-rtsp.log" 2>&1 &
     PIDS+=($!)
     wait_for_port "$CAM_RTSP_PORT"
-    ffmpeg -nostdin -loglevel error -re -f lavfi -i testsrc2=size=1280x720:rate=15 \
-        -c:v libx264 -preset ultrafast -tune zerolatency -g 15 -pix_fmt yuv420p \
+    # Like most cameras: H.265 video with G.711 sound.
+    ffmpeg -nostdin -loglevel error -re -f lavfi -i testsrc2=size=1280x720:rate=15 -f lavfi -i sine=f=440:sample_rate=8000 \
+        -c:v libx265 -preset ultrafast -x265-params log-level=error:keyint=15 -pix_fmt yuv420p \
+        -c:a pcm_mulaw -ar 8000 -ac 1 \
         -f rtsp -rtsp_transport tcp "rtsp://127.0.0.1:$CAM_RTSP_PORT/fakecam" > "$WORK/ffmpeg.log" 2>&1 &
     PIDS+=($!)
 
-    (cd "$WORK" && exec "$MEDIAMTX" "$ROOT/bridge/mediamtx.yml" > "$WORK/bridge.log" 2>&1) &
+    # The shipped config, with the scripts where Docker would mount them.
+    sed "s#sh /bridge/#sh $ROOT/bridge/scripts/#" "$ROOT/bridge/mediamtx.yml" > "$WORK/bridge.yml"
+    (cd "$WORK" && exec "$MEDIAMTX" "$WORK/bridge.yml" > "$WORK/bridge.log" 2>&1) &
     PIDS+=($!)
     wait_for_port 9997
     LAUNCH="$LAUNCH,bridge=127.0.0.1"
