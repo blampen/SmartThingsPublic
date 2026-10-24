@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home screen: a grid of live camera thumbnails followed by action tiles. -->
+<component name="CameraGrid" extends="Group">
+    <interface>
+        <field id="content" type="node" alias="grid.content" />
+        <field id="itemSelected" type="integer" alias="grid.itemSelected" />
+        <field id="itemFocused" type="integer" alias="grid.itemFocused" />
+        <field id="jumpToItem" type="integer" alwaysNotify="true" onChange="OnJumpToItem" />
+        <field id="statusText" type="string" alias="status.text" />
+        <!-- Index of the focused tile when the Options (*) key is pressed. -->
+        <field id="optionsPressed" type="integer" alwaysNotify="true" />
+    </interface>
+    <script type="text/brightscript" uri="CameraGrid.brs" />
+    <children>
+        <Label id="heading" text="Cameras" translation="[96,52]" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
+        <Label id="status" translation="[96,112]" width="1100" color="0x9AA7B4FF" font="font:SmallSystemFont" />
+        <Label id="hint" text="OK  open      *  camera options" translation="[1124,66]" width="700" horizAlign="right" color="0x9AA7B4FF" font="font:SmallSystemFont" />
+        <MarkupGrid
+            id="grid"
+            translation="[96,172]"
+            itemComponentName="CameraTile"
+            numColumns="3"
+            numRows="2"
+            itemSize="[552,368]"
+            itemSpacing="[36,44]"
+            drawFocusFeedback="true"
+            drawFocusFeedbackOnTop="true"
+            focusBitmapUri="pkg:/images/focus_ring.9.png"
+            vertFocusAnimationStyle="floatingFocus" />
+    </children>
+</component>

@@ -1,0 +1,15 @@
+{
+  "name": "roku-onvif-cameras",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Roku channel for viewing ONVIF IP cameras",
+  "scripts": {
+    "lint": "bsc",
+    "test": "tests/run-tests.sh"
+  },
+  "devDependencies": {
+    "@rokucommunity/bslint": "0.8.47",
+    "brighterscript": "0.73.8",
+    "brs-node": "2.6.2"
+  }
+}

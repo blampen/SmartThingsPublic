@@ -1,0 +1,15 @@
+# Video bridge for the Roku "ONVIF Cameras" channel.
+#   docker compose up -d
+# Then enter this machine's LAN IP as "Video bridge" in the channel's
+# Settings.
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1
+    container_name: roku-camera-bridge
+    restart: unless-stopped
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "9997:9997" # control API (the channel registers cameras here)
+      - "8888:8888" # HLS (what the Roku plays)
+      - "8554:8554" # RTSP re-stream (optional, for checking with VLC)

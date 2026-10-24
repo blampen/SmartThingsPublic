@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Talks to the MediaMTX video bridge.
+     request: { action: "register", settings, pathName, rtspUrl } -> { ok, hlsUrl, error }
+              { action: "info", settings }                         -> { ok, version, error } -->
+<component name="BridgeTask" extends="Task">
+    <interface>
+        <field id="request" type="assocarray" />
+        <field id="response" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
+    <script type="text/brightscript">
+        <![CDATA[
+        sub init()
+            m.top.functionName = "RunBridgeRequest"
+        end sub
+
+        sub RunBridgeRequest()
+            req = m.top.request
+            if req.action = "info" then
+                res = BridgeInfo(req.settings)
+            else
+                res = BridgeRegister(req.settings, req.pathName, req.rtspUrl)
+            end if
+            res.action = req.action
+            m.top.response = res
+        end sub
+        ]]>
+    </script>
+</component>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keeps fetching JPEG snapshots for every job in `jobs`
+     ([{ key, url, user, pass, intervalMs }]) and reports each one through
+     `frame` ({ key, ok, uri, error }). Update `jobs` at any time; set
+     control = "STOP" to end it. -->
+<component name="SnapshotTask" extends="Task">
+    <interface>
+        <field id="jobs" type="array" />
+        <field id="frame" type="assocarray" alwaysNotify="true" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Snapshots.brs" />
+    <script type="text/brightscript">
+        <![CDATA[
+        sub init()
+            m.top.functionName = "RunPoller"
+        end sub
+
+        sub RunPoller()
+            port = CreateObject("roMessagePort")
+            m.top.ObserveField("jobs", port)
+            m.top.ObserveField("control", port)
+            poller = NewSnapshotPoller(port)
+            if m.top.jobs <> invalid then poller.setJobs(m.top.jobs)
+
+            while LCase(m.top.control) <> "stop"
+                for each frame in poller.tick()
+                    m.top.frame = frame
+                end for
+
+                msg = wait(50, port)
+                msgType = type(msg)
+                if msgType = "roUrlEvent" then
+                    frame = poller.handle(msg)
+                    if frame <> invalid then m.top.frame = frame
+                else if msgType = "roSGNodeEvent" and msg.GetField() = "jobs" then
+                    jobs = msg.GetData()
+                    if jobs = invalid then jobs = []
+                    poller.setJobs(jobs)
+                end if
+            end while
+            poller.stopAll()
+        end sub
+        ]]>
+    </script>
+</component>

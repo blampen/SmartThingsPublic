@@ -1,0 +1,7 @@
+{
+  "rootDir": ".",
+  "files": ["manifest", "source/**/*", "components/**/*", "images/**/*"],
+  "createPackage": false,
+  "stagingDir": "out/staging",
+  "plugins": ["@rokucommunity/bslint"]
+}

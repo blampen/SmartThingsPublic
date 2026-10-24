@@ -1,0 +1,5 @@
+node_modules
+out/
+# written by MediaMTX when run from this directory
+auto.crt
+auto.key

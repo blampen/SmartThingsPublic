@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Probes one camera over ONVIF: clock, media service, profiles, stream and
+     snapshot URIs. Set `camera` ({ id, xaddr, user, pass, gen }) and control = "RUN". -->
+<component name="OnvifTask" extends="Task">
+    <interface>
+        <field id="camera" type="assocarray" />
+        <!-- { id, gen, ok, authFailed, error, info } -->
+        <field id="result" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Onvif.brs" />
+    <script type="text/brightscript">
+        <![CDATA[
+        sub init()
+            m.top.functionName = "RunProbe"
+        end sub
+
+        sub RunProbe()
+            cam = m.top.camera
+            result = OnvifProbeCamera(cam)
+            result.id = cam.id
+            result.gen = cam.gen
+            m.top.result = result
+        end sub
+        ]]>
+    </script>
+</component>

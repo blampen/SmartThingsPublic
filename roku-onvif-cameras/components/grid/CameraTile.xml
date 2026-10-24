@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- MarkupGrid item: live thumbnail, name and status for a camera, or an
+     icon for an action tile. 552 x 368. The grid draws the focus ring. -->
+<component name="CameraTile" extends="Group">
+    <interface>
+        <field id="itemContent" type="node" onChange="OnContent" />
+    </interface>
+    <script type="text/brightscript" uri="CameraTile.brs" />
+    <script type="text/brightscript" uri="pkg:/components/Theme.brs" />
+    <children>
+        <Rectangle id="card" width="552" height="368" color="0x1C232BFF" />
+        <SnapshotPoster id="snapshot" width="552" height="310" />
+        <Poster id="placeholder" width="160" height="160" translation="[196,60]" uri="pkg:/images/tile_camera.png" />
+        <Label id="placeholderText" translation="[16,226]" width="520" horizAlign="center" color="0x9AA7B4FF" font="font:SmallestSystemFont" wrap="true" maxLines="2" />
+        <Poster id="actionIcon" width="120" height="120" translation="[216,80]" visible="false" />
+        <Rectangle id="statusDot" translation="[18,330]" width="16" height="16" color="0x6E7A88FF" />
+        <Label id="title" translation="[46,318]" width="300" height="40" vertAlign="center" color="0xFFFFFFFF" font="font:SmallBoldSystemFont" ellipsizeOnBoundary="true" />
+        <Label id="subtitle" translation="[350,318]" width="186" height="40" vertAlign="center" horizAlign="right" color="0x9AA7B4FF" font="font:SmallestSystemFont" ellipsizeOnBoundary="true" />
+    </children>
+</component>

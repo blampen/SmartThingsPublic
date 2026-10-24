@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings: default camera login, video bridge, viewing preferences. Saves
+     straight to the registry and fires `changed`. -->
+<component name="SettingsScreen" extends="Group">
+    <interface>
+        <field id="changed" type="boolean" alwaysNotify="true" />
+        <field id="clearCameras" type="boolean" alwaysNotify="true" />
+        <field id="closed" type="boolean" alwaysNotify="true" />
+    </interface>
+    <script type="text/brightscript" uri="SettingsScreen.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
+    <script type="text/brightscript" uri="pkg:/components/Dialogs.brs" />
+    <children>
+        <Label text="Settings" translation="[96,52]" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" />
+        <LabelList
+            id="list"
+            translation="[96,172]"
+            itemSize="[1020,80]"
+            itemSpacing="[0,8]"
+            color="0xC8D1DAFF"
+            focusedColor="0x0F1318FF"
+            font="font:MediumSystemFont"
+            focusedFont="font:MediumBoldSystemFont" />
+        <Rectangle translation="[1180,172]" width="644" height="560" color="0x1C232BFF" />
+        <Label id="help" translation="[1212,200]" width="580" height="500" wrap="true" color="0xC8D1DAFF" font="font:SmallSystemFont" lineSpacing="6" />
+        <Label id="version" translation="[96,1000]" width="1728" color="0x6E7A88FF" font="font:SmallestSystemFont" />
+    </children>
+</component>

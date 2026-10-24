@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One tile in the camera grid: a camera, or an action ("scan", "add",
+     "settings"). The tile component observes these fields, so updating them
+     updates the tile in place. -->
+<component name="CameraItem" extends="ContentNode">
+    <interface>
+        <field id="kind" type="string" value="camera" />
+        <field id="camId" type="string" />
+        <!-- new | probing | online | login | offline -->
+        <field id="status" type="string" value="new" />
+        <field id="statusText" type="string" />
+        <field id="snapshotUri" type="string" />
+        <field id="snapshotError" type="string" />
+        <field id="icon" type="string" />
+    </interface>
+</component>

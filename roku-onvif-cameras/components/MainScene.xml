@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<component name="MainScene" extends="Scene">
+    <script type="text/brightscript" uri="MainScene.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+    <script type="text/brightscript" uri="pkg:/components/Dialogs.brs" />
+    <children>
+        <Rectangle width="1920" height="1080" color="0x0F1318FF" />
+        <CameraGrid id="grid" />
+        <SettingsScreen id="settingsScreen" visible="false" />
+        <CameraViewer id="viewer" visible="false" />
+        <Group id="toast" visible="false">
+            <Rectangle translation="[460,968]" width="1000" height="68" color="0x000000D8" />
+            <Label id="toastLabel" translation="[480,968]" width="960" height="68" horizAlign="center" vertAlign="center" color="0xFFFFFFFF" font="font:SmallSystemFont" />
+        </Group>
+        <Timer id="toastTimer" duration="4" />
+    </children>
+</component>

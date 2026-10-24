@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full screen view of one camera. Plays live video through the MediaMTX
+     bridge when one is configured, otherwise (or if video fails) shows
+     rapidly refreshed snapshots. Left/Right switch cameras. -->
+<component name="CameraViewer" extends="Group">
+    <interface>
+        <field id="cameras" type="array" />
+        <field id="index" type="integer" />
+        <field id="settings" type="assocarray" />
+        <!-- true starts playback, false stops everything -->
+        <field id="active" type="boolean" onChange="OnActive" />
+        <field id="closed" type="boolean" alwaysNotify="true" />
+        <!-- { id, profile } when the user picks another stream -->
+        <field id="profileChanged" type="assocarray" />
+    </interface>
+    <script type="text/brightscript" uri="CameraViewer.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Store.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Bridge.brs" />
+    <children>
+        <Rectangle id="background" width="1920" height="1080" color="0x000000FF" />
+        <Video id="video" width="1920" height="1080" visible="false" enableUI="false" />
+        <SnapshotPoster id="snapshot" width="1920" height="1080" />
+        <BusySpinner id="spinner" translation="[912,492]" visible="false" />
+        <Label id="message" translation="[260,600]" width="1400" horizAlign="center" wrap="true" maxLines="4" color="0xFFFFFFFF" font="font:MediumSystemFont" />
+        <Group id="overlay">
+            <Rectangle width="1920" height="150" color="0x000000B0" />
+            <Label id="name" translation="[80,30]" width="1300" color="0xFFFFFFFF" font="font:LargeBoldSystemFont" ellipsizeOnBoundary="true" />
+            <Label id="detail" translation="[80,96]" width="1500" color="0xC8D1DAFF" font="font:SmallSystemFont" ellipsizeOnBoundary="true" />
+            <Label id="clock" translation="[1420,40]" width="420" horizAlign="right" color="0xFFFFFFFF" font="font:MediumBoldSystemFont" />
+            <Rectangle translation="[0,996]" width="1920" height="84" color="0x000000B0" />
+            <Label
+                id="hints"
+                translation="[80,1018]"
+                width="1760"
+                color="0xC8D1DAFF"
+                font="font:SmallSystemFont"
+                text="Left / Right  camera        Up / Down  stream quality        *  video / snapshots        OK  hide info        Replay  reconnect" />
+        </Group>
+        <Timer id="overlayTimer" duration="5" />
+        <Timer id="clockTimer" duration="1" repeat="true" />
+        <Timer id="retryTimer" duration="3" />
+        <!-- Gives up on live video that hasn't started by then. -->
+        <Timer id="startTimer" duration="25" />
+    </children>
+</component>

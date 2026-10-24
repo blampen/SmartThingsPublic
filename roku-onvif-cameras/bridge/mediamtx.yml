@@ -1,0 +1,54 @@
+# MediaMTX settings for the Roku "ONVIF Cameras" channel.
+#
+# Roku players cannot play RTSP, which is what ONVIF cameras stream. This
+# server pulls each camera's RTSP stream and re-serves it as HLS, without
+# re-encoding. You do not list cameras here: the channel finds them over
+# ONVIF and registers each one through the API below when you open it.
+#
+# Full reference: https://github.com/bluenviron/mediamtx/blob/main/mediamtx.yml
+
+logLevel: info
+
+# Control API, used by the channel to add a path per camera (port 9997).
+api: true
+apiAddress: :9997
+
+# HLS output played by the Roku (port 8888). MPEG-TS segments, because the
+# Roku player does not support Low-Latency HLS. Segments are cut on camera
+# keyframes, so set each camera's I-frame interval to about 1 second (equal
+# to its frame rate) for the lowest delay.
+hls: true
+hlsAddress: :8888
+hlsVariant: mpegts
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsAllowOrigins: ["*"]
+
+# RTSP re-stream (port 8554), handy for checking a path with VLC:
+#   vlc rtsp://<bridge-ip>:8554/<path name shown in the channel>
+rtsp: true
+rtspAddress: :8554
+rtmp: false
+webrtc: false
+srt: false
+
+authMethod: internal
+authInternalUsers:
+  # Devices on private networks may watch streams and use the API. The API
+  # is sent camera passwords, so keep it on your LAN, and never forward
+  # these ports from your router.
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fd00::/8"]
+    permissions:
+      - action: api
+      - action: read
+      - action: playback
+
+pathDefaults:
+  # TCP survives Docker networking and Wi-Fi far better than RTP over UDP.
+  rtspTransport: tcp
+  # The channel registers cameras as on-demand: the camera is only pulled
+  # while somebody is watching.
+  sourceOnDemandStartTimeout: 15s
+  sourceOnDemandCloseAfter: 30s

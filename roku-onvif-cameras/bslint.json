@@ -1,0 +1,9 @@
+{
+    "rules": {
+        "block-if-style": "then",
+        "aa-comma-style": "off",
+        "unused-variable": "error",
+        "unused-parameter": "error",
+        "case-sensitivity": "error"
+    }
+}

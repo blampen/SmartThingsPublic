@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shows a stream of snapshot files without flicker: each new image loads
+     into a hidden Poster and is swapped to the front once decoded. -->
+<component name="SnapshotPoster" extends="Group">
+    <interface>
+        <field id="uri" type="string" onChange="OnUri" />
+        <field id="width" type="float" value="640" onChange="OnSize" />
+        <field id="height" type="float" value="360" onChange="OnSize" />
+        <!-- True once at least one image is showing. -->
+        <field id="hasImage" type="boolean" value="false" />
+    </interface>
+    <script type="text/brightscript" uri="SnapshotPoster.brs" />
+    <children>
+        <Rectangle id="background" color="0x000000FF" />
+        <Poster id="posterA" loadDisplayMode="scaleToFit" />
+        <Poster id="posterB" loadDisplayMode="scaleToFit" visible="false" />
+    </children>
+</component>

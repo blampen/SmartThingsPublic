@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Finds ONVIF devices with WS-Discovery: multicasts Probe messages to
+     239.255.255.250:3702 and collects the unicast ProbeMatches replies.
+     Sets `results` ([{ id, xaddr, host, name, hardware, location }]) once
+     `timeoutMs` has passed. -->
+<component name="DiscoveryTask" extends="Task">
+    <interface>
+        <field id="timeoutMs" type="integer" value="4000" />
+        <field id="results" type="array" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/source/Util.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Http.brs" />
+    <script type="text/brightscript" uri="pkg:/source/Onvif.brs" />
+    <script type="text/brightscript">
+        <![CDATA[
+        sub init()
+            m.top.functionName = "RunDiscovery"
+        end sub
+
+        sub RunDiscovery()
+            port = CreateObject("roMessagePort")
+            sock = CreateObject("roDatagramSocket")
+            if sock = invalid then
+                m.top.results = []
+                return
+            end if
+            sock.SetMessagePort(port)
+            group = CreateObject("roSocketAddress")
+            group.SetAddress("239.255.255.250:3702")
+            sock.SetSendToAddress(group)
+            sock.SetMulticastTTL(2)
+            sock.NotifyReadable(true)
+
+            found = {}
+            order = []
+            clock = CreateObject("roTimespan")
+            clock.Mark()
+            timeoutMs = m.top.timeoutMs
+            ' UDP is lossy and some cameras answer only one of the two probe
+            ' types, so send both, and repeat once.
+            SendProbes(sock)
+            resent = false
+
+            while clock.TotalMilliseconds() < timeoutMs
+                if not resent and clock.TotalMilliseconds() > 1200 then
+                    SendProbes(sock)
+                    resent = true
+                end if
+                msg = wait(200, port)
+                if type(msg) = "roSocketEvent" and msg.GetSocketID() = sock.GetID() and sock.IsReadable() then
+                    text = sock.ReceiveStr(16384)
+                    sender = ""
+                    from = sock.GetReceivedFromAddress()
+                    if from <> invalid then sender = from.GetAddress().Split(":")[0]
+                    for each match in OnvifParseProbeMatches(text, sender)
+                        if not found.DoesExist(match.id) then order.Push(match.id)
+                        found[match.id] = match
+                    end for
+                end if
+            end while
+            sock.Close()
+
+            results = []
+            for each id in order
+                results.Push(found[id])
+            end for
+            m.top.results = results
+        end sub
+
+        sub SendProbes(sock as Object)
+            info = CreateObject("roDeviceInfo")
+            sock.SendStr(OnvifProbeMessage("dn:NetworkVideoTransmitter", info.GetRandomUUID()))
+            sock.SendStr(OnvifProbeMessage("tds:Device", info.GetRandomUUID()))
+        end sub
+        ]]>
+    </script>
+</component>
